@@ -1,0 +1,47 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: only light;
+  --background: 255 255 255;
+  --foreground: 15 23 42;
+}
+
+* {
+  @apply border-slate-200;
+}
+
+html,
+body {
+  @apply bg-white text-slate-900 min-h-full;
+}
+
+body {
+  font-family: var(--font-inter), system-ui, -apple-system, BlinkMacSystemFont,
+    "Segoe UI", sans-serif;
+}
+
+a {
+  @apply text-brand-600 hover:text-brand-700 transition-colors;
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+textarea:focus-visible {
+  @apply outline-none ring-2 ring-brand-200 ring-offset-2 ring-offset-white;
+}
+
+.container {
+  @apply mx-auto w-full max-w-6xl px-4 sm:px-6 lg:px-8;
+}
+
+/* scrollbar  */
+html, body {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+::-webkit-scrollbar {
+  display: none;
+}

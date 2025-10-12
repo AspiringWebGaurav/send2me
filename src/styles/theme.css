@@ -1,0 +1,15 @@
+:root {
+  --toast-success: 68 210 140;
+  --toast-error: 239 68 68;
+  --toast-info: 59 130 246;
+  --toast-warning: 234 179 8;
+}
+
+.shadow-card {
+  box-shadow: 0 24px 60px -24px rgba(15, 23, 42, 0.25);
+}
+
+.glass-panel {
+  background: rgba(255, 255, 255, 0.72);
+  backdrop-filter: blur(18px);
+}
