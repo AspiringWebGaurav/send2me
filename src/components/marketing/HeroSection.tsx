@@ -9,11 +9,15 @@ import { useToast } from "@/components/Toast";
 import { TAndCModal } from "@/components/TAndCModal";
 import { useAuth } from "@/components/auth/AuthProvider";
 import { validateUsername } from "@/lib/moderation";
+import { usePreferredBaseUrl } from "@/hooks/usePreferredBaseUrl";
+import { buildProfileUrl } from "@/lib/publicUrl";
 
 type SessionProfile = {
   username: string | null;
   uid: string;
   email: string;
+  linkSlug: string | null;
+  linkUrl: string | null;
 };
 
 export function HeroSection() {
@@ -24,6 +28,7 @@ export function HeroSection() {
   const [openTerms, setOpenTerms] = useState(false);
   const [profile, setProfile] = useState<SessionProfile | null>(null);
   const { push } = useToast();
+  const baseUrl = usePreferredBaseUrl();
 
   const usernameHint = useMemo(() => {
     if (!usernameInput) return null;
@@ -55,14 +60,16 @@ export function HeroSection() {
       if (cancelled) return;
 
       if (json.user) {
-        setProfile(json.user);
-        if (json.user.username) {
-          setPublicUrl(
-            `${
-              process.env.NEXT_PUBLIC_PUBLIC_BASE_URL ?? window.location.origin
-            }/u/${json.user.username}`
-          );
-        } else setPublicUrl(null);
+        setProfile({
+          uid: json.user.uid,
+          email: json.user.email,
+          username: json.user.username,
+          linkSlug: json.user.linkSlug ?? null,
+          linkUrl: json.user.linkUrl ? json.user.linkUrl : null,
+        });
+        if (!json.user.username) {
+          setPublicUrl(null);
+        }
       } else {
         setProfile(null);
         setPublicUrl(null);
@@ -74,6 +81,24 @@ export function HeroSection() {
       cancelled = true;
     };
   }, [user, getToken]);
+
+  const claimedUsername = profile?.username ?? null;
+  const storedProfileUrl = profile?.linkUrl ? profile.linkUrl : null;
+
+  useEffect(() => {
+    if (!claimedUsername) {
+      setPublicUrl(null);
+      return;
+    }
+    if (storedProfileUrl) {
+      setPublicUrl((current) =>
+        current === storedProfileUrl ? current : storedProfileUrl
+      );
+      return;
+    }
+    const derived = buildProfileUrl(baseUrl, claimedUsername);
+    setPublicUrl((current) => (current === derived ? current : derived));
+  }, [baseUrl, claimedUsername, storedProfileUrl]);
 
   const handlePrepareLink = () => {
     if (!user) {
@@ -127,9 +152,24 @@ export function HeroSection() {
         throw new Error(json.error ?? "Unable to create link");
       }
 
-      setPublicUrl(json.publicUrl);
+      const claimedLink =
+        json.publicUrl ?? buildProfileUrl(baseUrl, usernameInput);
+      setPublicUrl(claimedLink);
       setProfile((prev) =>
-        prev ? { ...prev, username: usernameInput } : prev
+        prev
+          ? {
+              ...prev,
+              username: usernameInput,
+              linkSlug: prev.linkSlug ?? usernameInput,
+              linkUrl: claimedLink,
+            }
+          : {
+              uid: user?.uid ?? "",
+              email: user?.email ?? "",
+              username: usernameInput,
+              linkSlug: usernameInput,
+              linkUrl: claimedLink,
+            }
       );
       push({
         title: "You're live!",

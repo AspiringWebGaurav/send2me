@@ -25,7 +25,15 @@ type DashboardMessage = {
 };
 
 type SessionResponse = {
-  user: { uid: string; email: string; username: string | null } | null;
+  user:
+    | {
+        uid: string;
+        email: string;
+        username: string | null;
+        linkSlug: string | null;
+        linkUrl: string | null;
+      }
+    | null;
 };
 
 export function DashboardPageClient() {

@@ -13,6 +13,8 @@ export async function GET(req: NextRequest) {
       uid: session.uid,
       email: session.email,
       username: session.username,
+      linkSlug: session.linkSlug,
+      linkUrl: session.linkUrl,
     },
   });
 }

@@ -1,14 +1,17 @@
+"use client";
+
 // File: /components/LinkPanel.tsx
 import { CopyButton } from "@/components/CopyButton";
+import { usePreferredBaseUrl } from "@/hooks/usePreferredBaseUrl";
+import { buildProfileUrl } from "@/lib/publicUrl";
 
 type LinkPanelProps = {
   username: string;
 };
 
 export function LinkPanel({ username }: LinkPanelProps) {
-  const publicUrl = `${
-    process.env.NEXT_PUBLIC_PUBLIC_BASE_URL ?? ""
-  }/u/${username}`;
+  const baseUrl = usePreferredBaseUrl();
+  const publicUrl = buildProfileUrl(baseUrl, username);
 
   return (
     <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-soft">

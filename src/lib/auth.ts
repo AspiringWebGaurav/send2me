@@ -67,6 +67,8 @@ export async function getSessionUser(req: NextRequest | Request): Promise<Sessio
       uid: decoded.uid,
       email: email ?? profile?.email ?? "",
       username: profile?.username ?? null,
+      linkSlug: profile?.linkSlug ? profile.linkSlug : null,
+      linkUrl: profile?.linkUrl ? profile.linkUrl : null,
       displayName: displayName ?? null,
     };
   } catch (error) {

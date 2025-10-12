@@ -29,13 +29,42 @@ export async function POST(req: NextRequest) {
 
     validateUsername(username);
 
-    const origin = req.headers.get("origin") ?? req.nextUrl.origin;
+    const originHeader = req.headers.get("origin");
+    const forwardedProtoHeader = req.headers.get("x-forwarded-proto");
+    const forwardedHostHeader = req.headers.get("x-forwarded-host");
+    const hostHeader = req.headers.get("host");
+
+    const origin =
+      originHeader && originHeader.toLowerCase() !== "null"
+        ? originHeader
+        : null;
+
+    const forwardedProto = forwardedProtoHeader
+      ?.split(",")[0]
+      ?.trim()
+      .toLowerCase();
+    const forwardedHost = forwardedHostHeader?.split(",")[0]?.trim();
+    const host = hostHeader?.split(",")[0]?.trim();
+
+    const fallbackProto =
+      forwardedProto ??
+      (req.nextUrl.protocol ? req.nextUrl.protocol.replace(/:$/, "") : null) ??
+      "https";
+
+    const forwardedOrigin = forwardedHost
+      ? `${fallbackProto}://${forwardedHost}`
+      : null;
+
+    const hostOrigin = host ? `${fallbackProto}://${host}` : null;
+
+    const baseCandidate =
+      origin ?? forwardedOrigin ?? hostOrigin ?? req.nextUrl.origin;
 
     const publicUrl = await reserveUsername({
       uid: session.uid,
       username,
       email: session.email,
-      baseUrl: origin ?? undefined,
+      baseUrl: baseCandidate ?? undefined,
     });
 
     return NextResponse.json({ ok: true, publicUrl });

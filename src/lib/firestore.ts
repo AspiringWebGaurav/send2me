@@ -4,6 +4,7 @@ import { getAdminDb } from "./firebaseAdmin";
 import type { MessageRecord, UserProfile } from "@/types";
 import { normalize } from "./moderation";
 import { logger } from "./logger";
+import { buildProfileUrl, resolvePublicBaseUrl } from "./publicUrl";
 
 const USERS_COLLECTION = "users";
 const USERNAMES_COLLECTION = "usernames";
@@ -16,11 +17,28 @@ function deserializeUser(
 ): UserProfile | null {
   if (!doc.exists) return null;
   const data = doc.data() as Record<string, unknown>;
+  const username = String(data.username ?? "");
+  const linkSlug = String(data.linkSlug ?? "");
+  const storedLinkUrlInput =
+    typeof data.linkUrl === "string" ? String(data.linkUrl) : "";
+  const storedLinkUrl = (() => {
+    if (!storedLinkUrlInput) return "";
+    try {
+      return new URL(storedLinkUrlInput).toString();
+    } catch {
+      return "";
+    }
+  })();
+  const fallbackBase = resolvePublicBaseUrl(undefined, { allowLocal: true });
+  const fallbackLinkUrl = username
+    ? buildProfileUrl(fallbackBase, username)
+    : "";
   return {
     uid: doc.id,
     email: String(data.email ?? ""),
-    username: String(data.username ?? ""),
-    linkSlug: String(data.linkSlug ?? ""),
+    username,
+    linkSlug,
+    linkUrl: storedLinkUrl || fallbackLinkUrl,
     agreedToTOS: Boolean(data.agreedToTOS),
     agreedAt:
       (data.agreedAt as FirebaseFirestore.Timestamp)?.toDate() ?? new Date(),
@@ -107,6 +125,9 @@ export async function reserveUsername({
   const db = getAdminDb();
   const usernameKey = normalize(username);
 
+  const resolvedBase = resolvePublicBaseUrl(baseUrl, { allowLocal: true });
+  const profileUrl = buildProfileUrl(resolvedBase, usernameKey);
+
   await db.runTransaction(async (tx) => {
     const usernameRef = db.collection(USERNAMES_COLLECTION).doc(usernameKey);
     const userRef = db.collection(USERS_COLLECTION).doc(uid);
@@ -126,6 +147,7 @@ export async function reserveUsername({
         email,
         username: usernameKey,
         linkSlug: usernameKey,
+        linkUrl: profileUrl,
         agreedToTOS: true,
         agreedAt: FieldValue.serverTimestamp(),
         updatedAt: FieldValue.serverTimestamp(),
@@ -135,16 +157,7 @@ export async function reserveUsername({
     );
   });
 
-  const defaultBase =
-    process.env.NEXT_PUBLIC_PUBLIC_BASE_URL ??
-    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null) ??
-    "https://send2me.vercel.app";
-
-  const resolvedBase = baseUrl ?? defaultBase;
-  const normalizedBase = resolvedBase.endsWith("/")
-    ? resolvedBase.slice(0, -1)
-    : resolvedBase;
-  return `${normalizedBase}/u/${usernameKey}`;
+  return profileUrl;
 }
 
 /* ---------- MESSAGE CREATION ---------- */

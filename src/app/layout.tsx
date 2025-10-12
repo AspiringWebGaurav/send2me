@@ -5,6 +5,7 @@ import "./globals.css";
 import { Navbar } from "@/components/Navbar";
 import { Footer } from "@/components/Footer";
 import { Providers } from "./providers";
+import { resolvePublicBaseUrl } from "@/lib/publicUrl";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -13,7 +14,7 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  metadataBase: new URL(process.env.NEXT_PUBLIC_PUBLIC_BASE_URL ?? "https://send2me.vercel.app"),
+  metadataBase: new URL(resolvePublicBaseUrl(undefined, { allowLocal: false })),
   title: {
     default: "Send2me - Anonymous & Safe Messaging Links",
     template: "%s | Send2me",

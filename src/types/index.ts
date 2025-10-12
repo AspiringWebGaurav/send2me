@@ -8,6 +8,7 @@ export type UserProfile = {
   email: string;
   username: string;
   linkSlug: string;
+  linkUrl: string;
   agreedToTOS: boolean;
   agreedAt: Date;
   createdAt: Date;
@@ -44,6 +45,8 @@ export type SessionUser = {
   uid: string;
   email: string;
   username: string | null;
+  linkSlug: string | null;
+  linkUrl: string | null;
   displayName: string | null;
 };
 
