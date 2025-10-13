@@ -1,11 +1,14 @@
 import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
+import { Suspense } from "react";
 import "@/styles/theme.css";
 import "./globals.css";
 import { Navbar } from "@/components/Navbar";
 import { Footer } from "@/components/Footer";
 import { Providers } from "./providers";
 import { resolvePublicBaseUrl } from "@/lib/publicUrl";
+import { RouteLoader } from "@/components/RouteLoader";
+import { FullScreenLoader } from "@/components/ui/FullScreenLoader";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -58,9 +61,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en" className={inter.variable}>
       <body className="bg-white text-slate-900 antialiased">
         <Providers>
+          <RouteLoader />
           <div className="flex min-h-screen flex-col">
             <Navbar />
-            <main className="flex-1">{children}</main>
+            <Suspense fallback={<FullScreenLoader label="Preparing your experience..." />}>
+              <main className="flex-1">{children}</main>
+            </Suspense>
             <Footer />
           </div>
         </Providers>

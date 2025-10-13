@@ -11,6 +11,7 @@ import { useAuth } from "@/components/auth/AuthProvider";
 import { validateUsername } from "@/lib/moderation";
 import { usePreferredBaseUrl } from "@/hooks/usePreferredBaseUrl";
 import { buildProfileUrl } from "@/lib/publicUrl";
+import { useLoadingOverlay } from "@/components/LoadingOverlayProvider";
 
 type SessionProfile = {
   username: string | null;
@@ -29,6 +30,7 @@ export function HeroSection() {
   const [profile, setProfile] = useState<SessionProfile | null>(null);
   const { push } = useToast();
   const baseUrl = usePreferredBaseUrl();
+  const { showLoading, hideLoading } = useLoadingOverlay();
 
   const usernameHint = useMemo(() => {
     if (!usernameInput) return null;
@@ -138,6 +140,7 @@ export function HeroSection() {
     }
 
     setSubmitting(true);
+    showLoading("Claiming your Send2me link...");
     try {
       const response = await fetch("/api/link", {
         method: "POST",
@@ -186,6 +189,7 @@ export function HeroSection() {
     } finally {
       setOpenTerms(false);
       setSubmitting(false);
+      hideLoading();
     }
   };
 
