@@ -1,5 +1,7 @@
 import "server-only";
 
+import { readFileSync } from "node:fs";
+
 import {
   getApps,
   initializeApp,
@@ -34,7 +36,7 @@ function normalizePrivateKey(key?: string | null): string | undefined {
     normalized = `${normalized}\n-----END PRIVATE KEY-----`;
   }
 
-  // Make sure there’s a trailing newline (PEM parser is picky)
+  // Ensure a trailing newline (PEM parser is picky)
   if (!normalized.endsWith("\n")) normalized += "\n";
 
   return normalized;
@@ -49,7 +51,7 @@ function loadServiceAccount(): ServiceAccount | null {
   const inlineJson = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
   const jsonPath = process.env.FIREBASE_SERVICE_ACCOUNT_PATH;
 
-  // --- 1️⃣ Base64-encoded JSON ---
+  // --- 1. Base64-encoded JSON ---
   if (base64) {
     try {
       const decoded = Buffer.from(base64, "base64").toString("utf8");
@@ -67,7 +69,7 @@ function loadServiceAccount(): ServiceAccount | null {
     }
   }
 
-  // --- 2️⃣ Inline JSON string (already parsed) ---
+  // --- 2. Inline JSON string (already parsed) ---
   if (inlineJson) {
     try {
       const parsed = JSON.parse(inlineJson);
@@ -84,10 +86,11 @@ function loadServiceAccount(): ServiceAccount | null {
     }
   }
 
-  // --- 3️⃣ Local JSON file path ---
+  // --- 3. Local JSON file path ---
   if (jsonPath) {
     try {
-      const json = require(jsonPath);
+      const fileContents = readFileSync(jsonPath, "utf8");
+      const json = JSON.parse(fileContents);
       const privateKey = normalizePrivateKey(json.private_key);
       if (json.project_id && json.client_email && privateKey) {
         return {
@@ -101,7 +104,7 @@ function loadServiceAccount(): ServiceAccount | null {
     }
   }
 
-  // --- 4️⃣ Default env vars (recommended) ---
+  // --- 4. Default env vars (recommended) ---
   const projectId =
     process.env.FIREBASE_PROJECT_ID ??
     process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID ??
@@ -131,12 +134,12 @@ function createAdminApp() {
   if (!serviceAccount) {
     logger.error(
       [
-        "❌ Firebase Admin credentials missing or invalid.",
+        "Firebase Admin credentials missing or invalid.",
         "Set one of the following in your environment:",
-        "  • FIREBASE_SERVICE_ACCOUNT_BASE64 (base64 JSON)",
-        "  • FIREBASE_SERVICE_ACCOUNT_JSON (inline JSON)",
-        "  • FIREBASE_SERVICE_ACCOUNT_PATH (path to JSON file)",
-        "  • FIREBASE_CLIENT_EMAIL + FIREBASE_PRIVATE_KEY",
+        "  - FIREBASE_SERVICE_ACCOUNT_BASE64 (base64 JSON)",
+        "  - FIREBASE_SERVICE_ACCOUNT_JSON (inline JSON)",
+        "  - FIREBASE_SERVICE_ACCOUNT_PATH (path to JSON file)",
+        "  - FIREBASE_CLIENT_EMAIL + FIREBASE_PRIVATE_KEY",
       ].join("\n")
     );
     throw new Error("Firebase Admin SDK is not configured with a valid key.");
@@ -177,3 +180,4 @@ export function getAdminDb() {
 export function getAdminAuth() {
   return getAuth(getAdminApp());
 }
+

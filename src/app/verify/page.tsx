@@ -1,0 +1,21 @@
+import type { Metadata } from "next";
+import { Suspense } from "react";
+import { VerifyClient } from "./VerifyClient";
+
+export const metadata: Metadata = {
+  title: "Browser Verification | Send2me",
+  robots: {
+    index: false,
+    follow: false,
+  },
+};
+
+export const dynamic = "force-dynamic";
+
+export default function VerifyPage() {
+  return (
+    <Suspense fallback={null}>
+      <VerifyClient />
+    </Suspense>
+  );
+}
