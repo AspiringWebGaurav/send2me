@@ -79,7 +79,10 @@ export function Navbar() {
   }, [user, getToken]);
 
   return (
-    <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/80 backdrop-blur-md">
+    <header
+      className="sticky top-0 z-30 border-b border-slate-200 bg-white/80 backdrop-blur-md"
+      data-app-chrome="navbar"
+    >
       <div className="flex w-full items-center justify-between px-4 sm:px-6 lg:px-8 h-16">
         {/* Left: Logo */}
         <Link

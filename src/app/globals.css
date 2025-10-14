@@ -54,3 +54,7 @@ html, body {
   -ms-overflow-style: none;
   scrollbar-width: none;
 }
+
+body.chrome-hidden [data-app-chrome] {
+  display: none !important;
+}

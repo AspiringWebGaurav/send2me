@@ -105,6 +105,13 @@ export function VerifyClient() {
 
   const siteKey = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY;
 
+  useEffect(() => {
+    document.body.classList.add("chrome-hidden");
+    return () => {
+      document.body.classList.remove("chrome-hidden");
+    };
+  }, []);
+
   const downgradeToManual = useCallback((message?: string) => {
     setStatus("error");
     setErrorMessage(
@@ -183,7 +190,7 @@ export function VerifyClient() {
             userAgentData: userAgentData ?? undefined,
           }),
           cache: "no-store",
-          credentials: "omit",
+          credentials: "same-origin",
         });
 
         const payload: unknown = await response

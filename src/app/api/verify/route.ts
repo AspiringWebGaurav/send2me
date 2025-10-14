@@ -12,6 +12,7 @@ import {
   upsertVerificationRecord,
 } from "@/lib/browserVerification";
 import { logger } from "@/lib/logger";
+import { VERIFICATION_IP_COOKIE, decodeVerificationCookie } from "@/lib/verificationCookie";
 
 const verificationRequestSchema = z.object({
   token: z.string().min(10, "Turnstile token missing."),
@@ -47,6 +48,12 @@ function resolveClientIp(req: NextRequest): string | null {
     if (first && first.trim().length > 0) {
       return first.trim();
     }
+  }
+
+  const hinted = req.cookies.get(VERIFICATION_IP_COOKIE)?.value ?? null;
+  const decodedHint = decodeVerificationCookie(hinted);
+  if (decodedHint) {
+    return decodedHint;
   }
 
   return getRequestIp(req);
@@ -125,12 +132,14 @@ export async function POST(req: NextRequest) {
 
     logger.info("Browser verification succeeded", { ip, rayId });
 
-    return NextResponse.json(
+    const successResponse = NextResponse.json(
       {
         ok: true,
       },
       { status: 200 },
     );
+    successResponse.cookies.delete(VERIFICATION_IP_COOKIE);
+    return successResponse;
   } catch (error) {
     if (error instanceof TurnstileConfigurationError) {
       logger.error("Turnstile verification failed due to missing server configuration.");

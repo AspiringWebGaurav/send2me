@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
+import { headers } from "next/headers";
 import { Suspense } from "react";
 import "@/styles/theme.css";
 import "./globals.css";
@@ -62,6 +63,14 @@ export default function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
+  const headerList = headers();
+  const invokedPath =
+    headerList.get("x-invoke-path") ??
+    headerList.get("x-matched-path") ??
+    headerList.get("next-url") ??
+    "";
+  const shouldHideChrome = invokedPath === "/verify" || invokedPath.startsWith("/verify/");
+
   return (
     <html lang="en" className={inter.variable}>
       <body className="bg-white text-slate-900 antialiased">
@@ -69,7 +78,7 @@ export default function RootLayout({
           <Providers>
             <RouteLoader />
             <div className="flex min-h-screen flex-col">
-              <Navbar />
+              {shouldHideChrome ? null : <Navbar />}
               <Suspense
                 fallback={
                   <FullScreenLoader label="Preparing your experience..." />
@@ -77,7 +86,7 @@ export default function RootLayout({
               >
                 <main className="flex-1">{children}</main>
               </Suspense>
-              <Footer />
+              {shouldHideChrome ? null : <Footer />}
             </div>
           </Providers>
         </TurnstileVerificationProvider>

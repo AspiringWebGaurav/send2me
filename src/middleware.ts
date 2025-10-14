@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
+import { VERIFICATION_IP_COOKIE, VERIFICATION_IP_COOKIE_MAX_AGE } from "@/lib/verificationCookie";
+
 const PUBLIC_FILE_PATTERN = /\.(.*)$/;
 
 function shouldBypass(request: NextRequest): boolean {
@@ -72,7 +74,7 @@ export async function middleware(request: NextRequest) {
         status: response?.status ?? null,
       });
     }
-    return redirectToVerification(request, originalPath);
+    return redirectToVerification(request, originalPath, ip);
   }
 
   let payload: unknown = null;
@@ -82,7 +84,7 @@ export async function middleware(request: NextRequest) {
     if (process.env.NODE_ENV !== "production") {
       console.log("[middleware] verification JSON parsing failed");
     }
-    return redirectToVerification(request, originalPath);
+    return redirectToVerification(request, originalPath, ip);
   }
 
   const data = payload as { verified?: unknown };
@@ -96,18 +98,30 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  return redirectToVerification(request, originalPath);
+  return redirectToVerification(request, originalPath, ip);
 }
 
-function redirectToVerification(request: NextRequest, originalPath: string) {
+function redirectToVerification(request: NextRequest, originalPath: string, ip?: string | null) {
   const verifyUrl = new URL("/verify", request.nextUrl.origin);
   if (originalPath && originalPath !== "/verify") {
     verifyUrl.searchParams.set("redirectTo", originalPath);
   }
+  const response = NextResponse.redirect(verifyUrl);
+  if (ip) {
+    response.cookies.set({
+      name: VERIFICATION_IP_COOKIE,
+      value: ip,
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: VERIFICATION_IP_COOKIE_MAX_AGE,
+      path: "/",
+    });
+  }
   if (process.env.NODE_ENV !== "production") {
     console.log("[middleware] redirecting to verification", verifyUrl.toString());
   }
-  return NextResponse.redirect(verifyUrl);
+  return response;
 }
 
 export const config = {

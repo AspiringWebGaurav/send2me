@@ -8,7 +8,7 @@ const footerLinks = [
 
 export function Footer() {
   return (
-    <footer className="border-t border-slate-200 bg-slate-50/70">
+    <footer className="border-t border-slate-200 bg-slate-50/70" data-app-chrome="footer">
       <div className="flex w-full flex-col items-center justify-between gap-4 px-4 py-8 sm:flex-row sm:px-6 lg:px-8">
         {/* Left: Brand */}
         <div className="text-center sm:text-left">
