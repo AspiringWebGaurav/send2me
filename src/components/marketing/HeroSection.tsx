@@ -270,8 +270,7 @@ export function HeroSection() {
           </div>
         </div>
 
-        {/* RIGHT: Dynamic Instagram-style card */}
-        {/* RIGHT: Instagram-style card — single-line link, responsive, horizontal scroll if needed */}
+        {/* RIGHT: Instagram-style card — clickable single-line link */}
         <div className="hidden lg:flex lg:justify-center px-4">
           <motion.div
             layout
@@ -355,26 +354,36 @@ export function HeroSection() {
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: -10 }}
                     transition={{ duration: 0.3 }}
-                    className="space-y-3"
+                    className="space-y-4"
                   >
-                    <p className="text-sm text-slate-500">
-                      Your feedback link is live! Share or visit it below.
+                    <p className="text-sm text-slate-600">
+                      <span className="font-medium text-slate-700">
+                        Click here →
+                      </span>{" "}
+                      to open your message page in a new tab.
                     </p>
 
-                    {/* Single-line link with smooth horizontal scroll if it overflows */}
+                    {/* Clickable, single-line, horizontal-scroll if needed */}
                     <div className="flex justify-center">
-                      <div
-                        className="rounded-xl border border-brand-200 bg-brand-50 px-3 py-2 text-sm font-mono text-brand-800 whitespace-nowrap overflow-x-auto no-scrollbar"
+                      <a
+                        href={publicUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        aria-label="Open your Send2me message page in a new tab"
+                        className="rounded-xl border border-brand-200 bg-brand-50 px-3 py-2 text-sm font-mono text-brand-800 whitespace-nowrap overflow-x-auto no-scrollbar hover:bg-brand-100 hover:border-brand-300 transition"
                         title={publicUrl}
                       >
                         {publicUrl}
-                      </div>
+                      </a>
                     </div>
 
-                    <CopyButton value={publicUrl} />
-                    <p className="text-xs text-slate-400">
-                      (Scroll ↔ if needed, or click/copy to share your feedback
-                      page)
+                    <div className="flex justify-center">
+                      <CopyButton value={publicUrl} />
+                    </div>
+
+                    <p className="text-sm text-slate-600">
+                      Tip: Share this link anywhere. Friends can send you
+                      anonymous feedback instantly.
                     </p>
                   </motion.div>
                 )}
