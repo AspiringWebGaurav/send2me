@@ -12,6 +12,7 @@ import { validateUsername } from "@/lib/moderation";
 import { usePreferredBaseUrl } from "@/hooks/usePreferredBaseUrl";
 import { buildProfileUrl } from "@/lib/publicUrl";
 import { useLoadingOverlay } from "@/components/LoadingOverlayProvider";
+import { motion, AnimatePresence } from "framer-motion";
 
 type SessionProfile = {
   username: string | null;
@@ -69,8 +70,8 @@ export function HeroSection() {
           linkSlug: json.user.linkSlug ?? null,
           linkUrl: json.user.linkUrl ? json.user.linkUrl : null,
         });
-        if (!json.user.username) {
-          setPublicUrl(null);
+        if (json.user.linkUrl) {
+          setPublicUrl(json.user.linkUrl);
         }
       } else {
         setProfile(null);
@@ -194,42 +195,31 @@ export function HeroSection() {
   };
 
   return (
-    <section
-      className="relative overflow-hidden pb-24 pt-4 sm:pt-8"
-      style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
-    >
-      <style jsx global>{`
-        ::-webkit-scrollbar {
-          display: none;
-        }
-      `}</style>
+    <section className="relative overflow-hidden pb-24 pt-8">
+      <div className="absolute inset-0 -z-10 bg-gradient-to-b from-brand-50/50 to-white" />
 
-      <div className="absolute inset-0 -z-10 bg-gradient-to-b from-brand-50/40 to-white" />
-
-      <div className="container mx-auto grid gap-16 lg:grid-cols-[1.1fr_0.9fr] lg:items-center">
+      <div className="container mx-auto grid gap-16 lg:grid-cols-[1.2fr_0.8fr] lg:items-center">
         {/* LEFT */}
         <div className="space-y-8">
-          <div className="inline-flex items-center gap-2 rounded-full bg-white px-4 py-1 text-sm font-medium text-brand-600 shadow-soft animate-fade-in">
-            🚀 Fast launch, zero setup
+          <div className="inline-flex items-center gap-2 rounded-full bg-white px-4 py-1 text-sm font-medium text-brand-600 shadow-soft">
+            ✨ Create & share your feedback link anywhere
           </div>
 
-          <h1 className="text-4xl font-bold leading-tight tracking-tight text-slate-900 sm:text-5xl lg:text-6xl animate-fade-in-up">
-            Collect honest feedback without the chaos.
+          <h1 className="text-4xl font-bold leading-tight text-slate-900 sm:text-5xl lg:text-6xl">
+            Create a <span className="text-brand-600">Send2me</span> link you can paste anywhere.
           </h1>
 
-          <p className="max-w-xl text-lg text-slate-600 animate-fade-in-up delay-100">
-            Create your personal Send2me link to collect anonymous feedback,
-            ideas, or encouragement. Built with safety, moderation, and
-            simplicity in mind.
+          <p className="max-w-xl text-lg text-slate-600">
+            Build your personal link, share it on Instagram, Twitter, or anywhere else,
+            and start getting honest feedback — instantly.
           </p>
 
-          <div className="rounded-3xl border border-slate-200 bg-white/90 p-6 shadow-soft backdrop-blur-sm transition hover:shadow-md animate-fade-in-up delay-200">
+          <div className="rounded-3xl border border-slate-200 bg-white/90 p-6 shadow-soft backdrop-blur-sm transition hover:shadow-md">
             <h2 className="text-lg font-semibold text-slate-900">
-              Claim your link
+              Claim your link now
             </h2>
             <p className="mt-1 text-sm text-slate-500">
-              Sign in with Google, choose your username, and start collecting
-              messages instantly.
+              Sign in, pick your username, and get your custom Send2me link to share.
             </p>
 
             {publicUrl ? (
@@ -242,7 +232,7 @@ export function HeroSection() {
             ) : (
               <div className="mt-6 flex flex-col gap-3 sm:flex-row">
                 <Input
-                  placeholder="choose-username"
+                  placeholder="your-username"
                   value={usernameInput}
                   onChange={(e) =>
                     setUsernameInput(e.target.value.toLowerCase())
@@ -278,16 +268,110 @@ export function HeroSection() {
           </div>
         </div>
 
-        {/* RIGHT: polished minimal logo */}
-        <div className="relative hidden w-full lg:flex lg:justify-center lg:items-center">
-          <div className="relative aspect-[5/3] w-3/5 max-w-sm overflow-hidden rounded-xl border border-slate-100 bg-gradient-to-br from-white to-slate-50 shadow-sm">
-            <div className="absolute inset-0 flex flex-col items-center justify-center">
-              <div className="text-5xl font-semibold text-brand-600 tracking-tight select-none">
-                Send<span className="text-slate-700">2me</span>
+        {/* RIGHT: Dynamic Instagram-style card */}
+        <div className="hidden lg:flex lg:justify-center">
+          <motion.div
+            layout
+            className="relative w-72 rounded-3xl border border-slate-200 bg-white shadow-md overflow-hidden select-none"
+          >
+            <div className="flex items-center gap-3 p-4 border-b border-slate-100">
+              <div className="h-10 w-10 rounded-full bg-slate-200 overflow-hidden">
+                <Image
+                  src="/dummy-user.png"
+                  alt="User"
+                  width={40}
+                  height={40}
+                  className="object-cover pointer-events-none"
+                />
               </div>
-              <p className="text-sm text-slate-400 mt-2">safe & simple feedback</p>
+              <div>
+                <p className="text-sm font-semibold text-slate-900">
+                  @{profile?.username || "yourname"}
+                </p>
+                <p className="text-xs text-slate-500">Just posted a new link 👇</p>
+              </div>
             </div>
-          </div>
+
+            <div className="p-6 text-center space-y-3">
+              <AnimatePresence mode="wait">
+                {!user && (
+                  <motion.div
+                    key="guest"
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -10 }}
+                    transition={{ duration: 0.3 }}
+                  >
+                    <p className="text-sm text-slate-500">
+                      Sign in to create your own Send2me link.
+                    </p>
+                    <span
+                      className="inline-block rounded-xl border border-brand-200 bg-brand-50 px-3 py-2 text-sm font-mono text-brand-800 opacity-70 cursor-not-allowed select-none"
+                      title="Demo link disabled"
+                    >
+                      send2me.site/u/username
+                    </span>
+                    <Button
+                      onClick={() => signIn()}
+                      className="mt-3 w-full text-sm font-medium"
+                    >
+                      Sign in to Create Link
+                    </Button>
+                  </motion.div>
+                )}
+
+                {user && !publicUrl && (
+                  <motion.div
+                    key="signedIn"
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -10 }}
+                    transition={{ duration: 0.3 }}
+                  >
+                    <p className="text-sm text-slate-500">
+                      Welcome! Choose a username below to activate your link.
+                    </p>
+                    <span
+                      className="inline-block rounded-xl border border-brand-200 bg-brand-50 px-3 py-2 text-sm font-mono text-brand-800 opacity-70 cursor-not-allowed select-none"
+                      title="No link yet"
+                    >
+                      send2me.site/u/yourname
+                    </span>
+                    <p className="text-xs text-slate-400">
+                      (Your link will appear here once created)
+                    </p>
+                  </motion.div>
+                )}
+
+                {publicUrl && (
+                  <motion.div
+                    key="liveLink"
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -10 }}
+                    transition={{ duration: 0.3 }}
+                    className="space-y-3"
+                  >
+                    <p className="text-sm text-slate-500">
+                      Your feedback link is live! Share or visit it below.
+                    </p>
+                    <a
+                      href={publicUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-block rounded-xl border border-brand-200 bg-brand-50 px-3 py-2 text-sm font-mono text-brand-800 hover:bg-brand-100 transition"
+                    >
+                      {publicUrl}
+                    </a>
+                    <CopyButton value={publicUrl} />
+                    <p className="text-xs text-slate-400">
+                      (Click or copy to share your feedback page)
+                    </p>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+          </motion.div>
         </div>
       </div>
 
