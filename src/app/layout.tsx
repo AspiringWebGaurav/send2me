@@ -9,6 +9,7 @@ import { Providers } from "./providers";
 import { resolvePublicBaseUrl } from "@/lib/publicUrl";
 import { RouteLoader } from "@/components/RouteLoader";
 import { FullScreenLoader } from "@/components/ui/FullScreenLoader";
+import { TurnstileVerificationProvider } from "@/components/turnstile/TurnstileVerificationProvider"; // ✅ Correct import added
 
 const inter = Inter({
   subsets: ["latin"],
@@ -56,20 +57,31 @@ export const viewport: Viewport = {
   themeColor: "#1b8aff",
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   return (
     <html lang="en" className={inter.variable}>
       <body className="bg-white text-slate-900 antialiased">
-        <Providers>
-          <RouteLoader />
-          <div className="flex min-h-screen flex-col">
-            <Navbar />
-            <Suspense fallback={<FullScreenLoader label="Preparing your experience..." />}>
-              <main className="flex-1">{children}</main>
-            </Suspense>
-            <Footer />
-          </div>
-        </Providers>
+        {/* ✅ Wrap everything with TurnstileVerificationProvider */}
+        <TurnstileVerificationProvider>
+          <Providers>
+            <RouteLoader />
+            <div className="flex min-h-screen flex-col">
+              <Navbar />
+              <Suspense
+                fallback={
+                  <FullScreenLoader label="Preparing your experience..." />
+                }
+              >
+                <main className="flex-1">{children}</main>
+              </Suspense>
+              <Footer />
+            </div>
+          </Providers>
+        </TurnstileVerificationProvider>
       </body>
     </html>
   );

@@ -5,11 +5,16 @@ import { getUserByUsername, saveMessage } from "@/lib/firestore";
 import { validateMessage, normalize } from "@/lib/moderation";
 import { assertNotRateLimited, hashValue, RateLimitError } from "@/lib/rateLimit";
 import { logger } from "@/lib/logger";
+import {
+  verifyTurnstileToken,
+  TurnstileConfigurationError,
+} from "@/lib/turnstile";
 
 const payloadSchema = z.object({
   to: z.string().min(3).max(32),
   text: z.string().min(1).max(500),
   anon: z.boolean().optional().default(true),
+  turnstileToken: z.string().min(10, "Turnstile verification is required."),
 });
 
 function getRequesterIp(req: NextRequest) {
@@ -23,7 +28,15 @@ function getRequesterIp(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const json = await req.json();
-    const { to, text, anon } = payloadSchema.parse(json);
+    const { to, text, anon, turnstileToken } = payloadSchema.parse(json);
+
+    const turnstileResult = await verifyTurnstileToken(turnstileToken);
+    if (!turnstileResult.success) {
+      const errorMessage =
+        turnstileResult.errors.join(", ") ||
+        "Turnstile verification failed. Please refresh and try again.";
+      return NextResponse.json({ ok: false, error: errorMessage }, { status: 400 });
+    }
 
     const receiver = await getUserByUsername(normalize(to));
     if (!receiver) {
@@ -80,6 +93,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true });
   } catch (error) {
     logger.warn("Failed to send message", error);
+    if (error instanceof TurnstileConfigurationError) {
+      return NextResponse.json(
+        { ok: false, error: "Turnstile secret not configured on the server." },
+        { status: 500 },
+      );
+    }
     if (error instanceof z.ZodError) {
       return NextResponse.json({ ok: false, error: "Invalid request payload." }, { status: 400 });
     }

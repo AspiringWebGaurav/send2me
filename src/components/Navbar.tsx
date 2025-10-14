@@ -3,8 +3,9 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
-import { LoginButton } from "@/components/auth/LoginButton";
 import { useAuth } from "@/components/auth/AuthProvider";
+import { LoginButton } from "@/components/auth/LoginButton";
+import { ProfileInfo } from "@/components/profile/ProfileInfo";
 import { cn } from "@/lib/utils";
 
 const links = [
@@ -109,6 +110,7 @@ export function Navbar() {
 
         {/* Right: Inbox + Login */}
         <div className="flex items-center gap-3">
+          <ProfileInfo />
           {user && (
             <Link
               href="/dashboard"
