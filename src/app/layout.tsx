@@ -9,7 +9,7 @@ import { Providers } from "./providers";
 import { resolvePublicBaseUrl } from "@/lib/publicUrl";
 import { RouteLoader } from "@/components/RouteLoader";
 import { FullScreenLoader } from "@/components/ui/FullScreenLoader";
-import { TurnstileVerificationProvider } from "@/components/turnstile/TurnstileVerificationProvider"; // ✅ Correct import added
+import { TurnstileVerificationProvider } from "@/components/turnstile/TurnstileProvider";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -65,7 +65,6 @@ export default function RootLayout({
   return (
     <html lang="en" className={inter.variable}>
       <body className="bg-white text-slate-900 antialiased">
-        {/* ✅ Wrap everything with TurnstileVerificationProvider */}
         <TurnstileVerificationProvider>
           <Providers>
             <RouteLoader />

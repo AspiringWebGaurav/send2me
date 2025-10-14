@@ -1,8 +1,18 @@
 "use client";
 
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useRef } from "react";
 import { useTurnstileVerificationContext } from "@/components/turnstile/TurnstileProvider";
+import { describeTurnstileErrors } from "@/lib/turnstile";
 import type { TurnstileStatus } from "@/types/turnstile";
+
+interface VerificationResponse {
+  ok: boolean;
+  error?: string;
+  errors?: string[];
+}
+
+const DEFAULT_ERROR_MESSAGE =
+  "Turnstile verification failed. Please refresh the challenge and try again.";
 
 export interface UseTurnstileVerificationResult {
   status: TurnstileStatus;
@@ -20,49 +30,134 @@ export interface UseTurnstileVerificationResult {
   markWidgetLoading: () => void;
 }
 
+function parseVerificationError(payload: unknown): { message: string; codes: string[] } {
+  if (!payload || typeof payload !== "object") {
+    return { message: DEFAULT_ERROR_MESSAGE, codes: [] };
+  }
+
+  const data = payload as VerificationResponse;
+  const codes =
+    Array.isArray(data.errors) && data.errors.every((code) => typeof code === "string")
+      ? (data.errors as string[])
+      : [];
+
+  const message =
+    typeof data.error === "string" && data.error.trim().length > 0
+      ? data.error.trim()
+      : describeTurnstileErrors(codes);
+
+  return { message, codes };
+}
+
 /**
  * Provides an imperative API around the shared Turnstile verification state.
  * The hook centralises token verification, expiry handling, and error messaging.
  */
 export function useTurnstileVerification(): UseTurnstileVerificationResult {
   const { state, dispatch } = useTurnstileVerificationContext();
+  const abortControllerRef = useRef<AbortController | null>(null);
+
+  const abortVerification = useCallback(() => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+  }, []);
 
   const verifyToken = useCallback(
     async (token: string) => {
-      if (!token) {
+      const trimmed = token?.trim();
+      if (!trimmed) {
         dispatch({
           type: "VERIFY_FAILURE",
-          error: "Missing Turnstile token. Please retry verification.",
+          error: "Missing Turnstile token. Please retry the verification challenge.",
         });
         return false;
       }
 
-      if (state.status === "success" && state.token === token) {
+      if (state.status === "success" && state.token === trimmed) {
         return true;
       }
 
-      dispatch({ type: "VERIFY_SUCCESS", token });
-      return true;
+      if (state.status === "verifying" && state.token === trimmed) {
+        // A verification request is already in-flight for this token.
+        return false;
+      }
+
+      abortVerification();
+
+      const controller = new AbortController();
+      abortControllerRef.current = controller;
+
+      dispatch({ type: "VERIFY_PENDING", token: trimmed });
+
+      try {
+        const response = await fetch("/api/turnstile/verify", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ token: trimmed }),
+          signal: controller.signal,
+          cache: "no-store",
+        });
+
+        const payload: unknown = await response
+          .json()
+          .catch(() => ({ ok: false, error: DEFAULT_ERROR_MESSAGE }));
+
+        if (!response.ok) {
+          const { message } = parseVerificationError(payload);
+          dispatch({
+            type: "VERIFY_FAILURE",
+            error: message,
+          });
+          return false;
+        }
+
+        dispatch({ type: "VERIFY_SUCCESS", token: trimmed });
+        return true;
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") {
+          // A newer verification cycle superseded this request.
+          return false;
+        }
+
+        const message =
+          error instanceof Error ? error.message : "Turnstile verification request failed.";
+        dispatch({
+          type: "VERIFY_FAILURE",
+          error: message || DEFAULT_ERROR_MESSAGE,
+        });
+        return false;
+      } finally {
+        if (abortControllerRef.current === controller) {
+          abortControllerRef.current = null;
+        }
+      }
     },
-    [dispatch, state],
+    [abortVerification, dispatch, state.status, state.token],
   );
 
   const reset = useCallback(() => {
+    abortVerification();
     dispatch({ type: "RESET" });
-  }, [dispatch]);
+  }, [abortVerification, dispatch]);
 
   const markExpired = useCallback(() => {
+    abortVerification();
     dispatch({ type: "EXPIRED" });
-  }, [dispatch]);
+  }, [abortVerification, dispatch]);
 
   const markFailed = useCallback(
     (message: string) => {
+      abortVerification();
       dispatch({
         type: "VERIFY_FAILURE",
         error: message,
       });
     },
-    [dispatch],
+    [abortVerification, dispatch],
   );
 
   const markWidgetReady = useCallback(() => {
@@ -70,8 +165,9 @@ export function useTurnstileVerification(): UseTurnstileVerificationResult {
   }, [dispatch]);
 
   const markWidgetLoading = useCallback(() => {
+    abortVerification();
     dispatch({ type: "WIDGET_LOADING" });
-  }, [dispatch]);
+  }, [abortVerification, dispatch]);
 
   const derived = useMemo(() => {
     const { status, token, error, isWidgetReady } = state;

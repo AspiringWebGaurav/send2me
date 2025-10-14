@@ -14,19 +14,60 @@ const nextConfig = {
   },
 
   async headers() {
-    // ✅ Clean, single CSP directive (no duplicates)
-    const csp = [
-      "default-src 'self'",
-      "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.googletagmanager.com https://apis.google.com https://challenges.cloudflare.com",
-      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-      "img-src 'self' data: blob: https://images.unsplash.com https://lh3.googleusercontent.com https://challenges.cloudflare.com",
-      "font-src 'self' https://fonts.gstatic.com",
-      "connect-src 'self' https://*.firebaseio.com https://firestore.googleapis.com https://securetoken.googleapis.com https://www.googleapis.com https://identitytoolkit.googleapis.com https://challenges.cloudflare.com",
-      "frame-src 'self' https://accounts.google.com https://send2me-f4f3b.firebaseapp.com https://challenges.cloudflare.com",
-      "form-action 'self'",
-      "base-uri 'self'",
-      "object-src 'none'",
-    ].join("; ");
+    const allowVercelLive =
+      process.env.ENABLE_VERCEL_LIVE === "true" || process.env.VERCEL_ENV === "preview";
+
+    const directives = {
+      "default-src": new Set(["'self'"]),
+      "script-src": new Set([
+        "'self'",
+        "'unsafe-inline'",
+        "'unsafe-eval'",
+        "https://www.googletagmanager.com",
+        "https://apis.google.com",
+        "https://challenges.cloudflare.com",
+      ]),
+      "style-src": new Set(["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"]),
+      "img-src": new Set([
+        "'self'",
+        "data:",
+        "blob:",
+        "https://images.unsplash.com",
+        "https://lh3.googleusercontent.com",
+        "https://challenges.cloudflare.com",
+      ]),
+      "font-src": new Set(["'self'", "https://fonts.gstatic.com"]),
+      "connect-src": new Set([
+        "'self'",
+        "https://*.firebaseio.com",
+        "https://firestore.googleapis.com",
+        "https://securetoken.googleapis.com",
+        "https://www.googleapis.com",
+        "https://identitytoolkit.googleapis.com",
+        "https://challenges.cloudflare.com",
+      ]),
+      "frame-src": new Set([
+        "'self'",
+        "https://accounts.google.com",
+        "https://send2me-f4f3b.firebaseapp.com",
+        "https://challenges.cloudflare.com",
+      ]),
+      "form-action": new Set(["'self'"]),
+      "base-uri": new Set(["'self'"]),
+      "object-src": new Set(["'none'"]),
+    };
+
+    if (allowVercelLive) {
+      directives["script-src"].add("https://vercel.live");
+      directives["connect-src"].add("https://vercel.live");
+    }
+
+    directives["script-src-elem"] = new Set(directives["script-src"]);
+    directives["script-src-attr"] = new Set(["'none'"]);
+
+    const csp = Object.entries(directives)
+      .map(([key, value]) => `${key} ${Array.from(value).join(" ")}`)
+      .join("; ");
 
     const securityHeaders = [
       {

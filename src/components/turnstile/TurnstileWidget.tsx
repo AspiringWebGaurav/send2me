@@ -74,6 +74,14 @@ export const TurnstileWidget = memo(function TurnstileWidget({
     [markFailed],
   );
 
+  const handleTimeout = useCallback(() => {
+    markFailed("Verification timed out. Please refresh the widget.");
+  }, [markFailed]);
+
+  const handleUnsupported = useCallback(() => {
+    markFailed("Your browser does not support the verification widget. Try a different browser.");
+  }, [markFailed]);
+
   const showOverlay = useMemo(
     () => Boolean(siteKey) && (!isWidgetReady || isLoading),
     [isLoading, isWidgetReady, siteKey],
@@ -105,6 +113,8 @@ export const TurnstileWidget = memo(function TurnstileWidget({
           onExpire={handleExpire}
           onError={handleError}
           onLoad={markWidgetReady}
+          onTimeout={handleTimeout}
+          onUnsupported={handleUnsupported}
           refreshExpired="auto"
         />
       )}

@@ -5,10 +5,8 @@ import { getUserByUsername, saveMessage } from "@/lib/firestore";
 import { validateMessage, normalize } from "@/lib/moderation";
 import { assertNotRateLimited, hashValue, RateLimitError } from "@/lib/rateLimit";
 import { logger } from "@/lib/logger";
-import {
-  verifyTurnstileToken,
-  TurnstileConfigurationError,
-} from "@/lib/turnstile";
+import { getRequestIp } from "@/lib/request";
+import { verifyTurnstileToken, TurnstileConfigurationError, describeTurnstileErrors } from "@/lib/turnstile";
 
 const payloadSchema = z.object({
   to: z.string().min(3).max(32),
@@ -17,24 +15,19 @@ const payloadSchema = z.object({
   turnstileToken: z.string().min(10, "Turnstile verification is required."),
 });
 
-function getRequesterIp(req: NextRequest) {
-  const direct = req.ip;
-  if (direct) return direct;
-  const forwarded = req.headers.get("x-forwarded-for");
-  if (!forwarded) return null;
-  return forwarded.split(",")[0]?.trim() ?? null;
-}
-
 export async function POST(req: NextRequest) {
   try {
     const json = await req.json();
     const { to, text, anon, turnstileToken } = payloadSchema.parse(json);
+    const ip = getRequestIp(req);
 
-    const turnstileResult = await verifyTurnstileToken(turnstileToken);
+    const turnstileResult = await verifyTurnstileToken(turnstileToken, { ip });
     if (!turnstileResult.success) {
-      const errorMessage =
-        turnstileResult.errors.join(", ") ||
-        "Turnstile verification failed. Please refresh and try again.";
+      const errorMessage = describeTurnstileErrors(turnstileResult.errors);
+      logger.warn("Turnstile verification failed for send endpoint", {
+        errors: turnstileResult.errors,
+        ip,
+      });
       return NextResponse.json({ ok: false, error: errorMessage }, { status: 400 });
     }
 
@@ -45,7 +38,6 @@ export async function POST(req: NextRequest) {
 
     const messageText = validateMessage(text);
 
-    const ip = getRequesterIp(req);
     const userAgent = req.headers.get("user-agent") ?? null;
     const ipHash = hashValue(ip ?? "anonymous");
     const uaHash = hashValue(userAgent ?? "unknown");

@@ -21,6 +21,7 @@ type TurnstileAction =
   | { type: "RESET" }
   | { type: "WIDGET_LOADING" }
   | { type: "WIDGET_READY" }
+  | { type: "VERIFY_PENDING"; token: string }
   | { type: "VERIFY_SUCCESS"; token: string }
   | { type: "VERIFY_FAILURE"; error: string }
   | { type: "EXPIRED" };
@@ -48,10 +49,18 @@ const reducer = (state: TurnstileState, action: TurnstileAction): TurnstileState
         error: null,
         isWidgetReady: false,
       };
+    case "VERIFY_PENDING":
+      return {
+        status: "verifying",
+        token: action.token,
+        error: null,
+        isWidgetReady: state.isWidgetReady,
+      };
     case "WIDGET_READY":
       return {
         ...state,
-        status: state.status === "success" ? state.status : "ready",
+        status:
+          state.status === "success" || state.status === "verifying" ? state.status : "ready",
         isWidgetReady: true,
         error: null,
       };
