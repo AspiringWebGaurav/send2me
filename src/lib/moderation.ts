@@ -1,11 +1,32 @@
+// moderation.ts — same UX, expanded multilingual abuse detection (no API)
+
 const blockedTerms = [
-  "fuck",
-  "shit",
-  "bitch",
-  "cunt",
-  "slur1",
-  "slur2",
-  "kill yourself",
+  // English
+  "fuck", "shit", "bitch", "cunt", "asshole", "bastard", "slut", "whore",
+  "dick", "pussy", "faggot", "retard", "moron", "stupid", "dumbass",
+  "motherfucker", "fuk", "fcuk", "fck", "loser", "jerk", "pervert",
+  "idiot", "screw you", "bullshit", "trash", "garbage", "waste",
+  "kill yourself", "go die", "kms", "kys",
+
+  // Hindi
+  "chutiya", "madarchod", "bhenchod", "gaand", "randi", "haraami", "kamina",
+  "kutte", "kutti", "suar", "lavde", "launde", "lund", "randi ke bacche",
+  "chod", "chodna", "chodne", "tera baap", "teri maa", "teri behen",
+  "ullu ke pathe", "behen ke laude", "muh me le", "teri maa ka", "randi ka baccha",
+
+  // Marathi
+  "lavda", "gaand", "chod", "zavlya", "randi", "haraami", "bayko chod",
+  "madrchod", "bhenchod", "porki", "gandu", "salli", "chinal", "shikarna",
+  "padu", "khalya", "lavkar mar", "boka", "randi cha pille", "zop la lav",
+
+  // disguised / leetspeak / modern abuse
+  "f@ck", "phuck", "fking", "fukking", "b!tch", "b@stard", "b@st@rd",
+  "m0therfucker", "d1ck", "p3nis", "pusy", "s3x", "horny", "r@pe", "rapist",
+  "molest", "sexual assault", "harass", "sexually harass", "pedophile",
+  "pedo", "child abuse", "kill u", "go to hell", "hate you",
+
+  // placeholders
+  "slur1", "slur2",
 ];
 
 const reservedUsernames = new Set([
@@ -30,6 +51,10 @@ const collapsedCharMap: Record<string, string> = {
   "$": "s",
   "!": "i",
   "7": "t",
+  "5": "s",
+  "9": "g",
+  "8": "b",
+  "2": "z",
 };
 
 export function normalize(text: string) {
@@ -44,7 +69,7 @@ export function normalize(text: string) {
 
 export function containsLinks(text: string) {
   const urlPattern =
-    /((https?:\/\/|www\.)[^\s]+)|(mailto:|ftp:)[^\s]+|([^\s]+\.(com|net|org|io|me|co|app)(\/|\b))/gi;
+    /((https?:\/\/|www\.)[^\s]+)|(mailto:|ftp:)[^\s]+|([^\s]+\.(com|net|org|io|me|co|app|xyz|in|gov)(\/|\b))/gi;
   return urlPattern.test(text);
 }
 
@@ -60,7 +85,7 @@ export function validateUsername(username: string) {
   const regex = /^[a-z0-9](?:[a-z0-9_.]{1,18})[a-z0-9]$/;
   if (!regex.test(username)) {
     throw new Error(
-      "Username must be 3-20 characters, lowercase letters, numbers, dots, or underscores.",
+      "Username must be 3-20 characters, lowercase letters, numbers, dots, or underscores."
     );
   }
   if (reservedUsernames.has(normalized)) {
