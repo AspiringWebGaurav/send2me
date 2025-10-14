@@ -206,12 +206,13 @@ export function HeroSection() {
           </div>
 
           <h1 className="text-4xl font-bold leading-tight text-slate-900 sm:text-5xl lg:text-6xl">
-            Create a <span className="text-brand-600">Send2me</span> link you can paste anywhere.
+            Create a <span className="text-brand-600">Send2me</span> link you
+            can paste anywhere.
           </h1>
 
           <p className="max-w-xl text-lg text-slate-600">
-            Build your personal link, share it on Instagram, Twitter, or anywhere else,
-            and start getting honest feedback — instantly.
+            Build your personal link, share it on Instagram, Twitter, or
+            anywhere else, and start getting honest feedback — instantly.
           </p>
 
           <div className="rounded-3xl border border-slate-200 bg-white/90 p-6 shadow-soft backdrop-blur-sm transition hover:shadow-md">
@@ -219,7 +220,8 @@ export function HeroSection() {
               Claim your link now
             </h2>
             <p className="mt-1 text-sm text-slate-500">
-              Sign in, pick your username, and get your custom Send2me link to share.
+              Sign in, pick your username, and get your custom Send2me link to
+              share.
             </p>
 
             {publicUrl ? (
@@ -269,10 +271,11 @@ export function HeroSection() {
         </div>
 
         {/* RIGHT: Dynamic Instagram-style card */}
-        <div className="hidden lg:flex lg:justify-center">
+        {/* RIGHT: Instagram-style card — single-line link, responsive, horizontal scroll if needed */}
+        <div className="hidden lg:flex lg:justify-center px-4">
           <motion.div
             layout
-            className="relative w-72 rounded-3xl border border-slate-200 bg-white shadow-md overflow-hidden select-none"
+            className="relative w-full max-w-lg rounded-3xl border border-slate-200 bg-white shadow-md overflow-hidden select-none"
           >
             <div className="flex items-center gap-3 p-4 border-b border-slate-100">
               <div className="h-10 w-10 rounded-full bg-slate-200 overflow-hidden">
@@ -285,10 +288,12 @@ export function HeroSection() {
                 />
               </div>
               <div>
-                <p className="text-sm font-semibold text-slate-900">
+                <p className="text-sm font-semibold text-slate-900 truncate max-w-[12rem]">
                   @{profile?.username || "yourname"}
                 </p>
-                <p className="text-xs text-slate-500">Just posted a new link 👇</p>
+                <p className="text-xs text-slate-500">
+                  Just posted a new link 👇
+                </p>
               </div>
             </div>
 
@@ -355,23 +360,38 @@ export function HeroSection() {
                     <p className="text-sm text-slate-500">
                       Your feedback link is live! Share or visit it below.
                     </p>
-                    <a
-                      href={publicUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-block rounded-xl border border-brand-200 bg-brand-50 px-3 py-2 text-sm font-mono text-brand-800 hover:bg-brand-100 transition"
-                    >
-                      {publicUrl}
-                    </a>
+
+                    {/* Single-line link with smooth horizontal scroll if it overflows */}
+                    <div className="flex justify-center">
+                      <div
+                        className="rounded-xl border border-brand-200 bg-brand-50 px-3 py-2 text-sm font-mono text-brand-800 whitespace-nowrap overflow-x-auto no-scrollbar"
+                        title={publicUrl}
+                      >
+                        {publicUrl}
+                      </div>
+                    </div>
+
                     <CopyButton value={publicUrl} />
                     <p className="text-xs text-slate-400">
-                      (Click or copy to share your feedback page)
+                      (Scroll ↔ if needed, or click/copy to share your feedback
+                      page)
                     </p>
                   </motion.div>
                 )}
               </AnimatePresence>
             </div>
           </motion.div>
+
+          {/* Hide scrollbar but keep horizontal scrolling */}
+          <style jsx global>{`
+            .no-scrollbar::-webkit-scrollbar {
+              display: none;
+            }
+            .no-scrollbar {
+              -ms-overflow-style: none;
+              scrollbar-width: none;
+            }
+          `}</style>
         </div>
       </div>
 
