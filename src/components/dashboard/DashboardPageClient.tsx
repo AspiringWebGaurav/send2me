@@ -392,18 +392,38 @@ export function DashboardPageClient() {
             </div>
           )}
 
-          <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-            <h2 className="text-lg font-semibold text-slate-900">
-              Need a break?
-            </h2>
-            <p className="mt-2 text-sm text-slate-600">
-              Sign out when you're done reviewing messages. You can sign back in
-              anytime.
-            </p>
-            <Button variant="ghost" className="mt-4" onClick={signOut}>
-              Sign out
-            </Button>
-          </div>
+       <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+  <h2 className="text-lg font-semibold text-slate-900">
+    Need a break?
+  </h2>
+
+  <p className="mt-2 text-sm text-slate-600">
+    Sign out when you're done reviewing messages. You can sign back in anytime.
+  </p>
+
+  <Button
+    onClick={signOut}
+    className="
+      mt-4 
+      bg-red-500 
+      hover:bg-red-600 
+      text-white 
+      font-medium 
+      rounded-xl 
+      shadow-sm 
+      transition-all 
+      duration-200 
+      ease-in-out 
+      focus:ring-2 
+      focus:ring-red-400 
+      focus:ring-offset-2
+      active:scale-[0.98]
+    "
+  >
+    Sign out
+  </Button>
+</div>
+
         </aside>
       </div>
     </section>
