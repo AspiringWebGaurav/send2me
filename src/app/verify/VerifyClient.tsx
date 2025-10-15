@@ -35,10 +35,10 @@ function sanitizeRedirectTarget(target: string | null): string {
   return target;
 }
 
-// === robust hide/restore ===
 function toggleGlobalChrome(hide: boolean) {
   const elements = document.querySelectorAll<HTMLElement>("header, nav, footer");
   devLog(hide ? "Hiding chrome" : "Restoring chrome", elements.length);
+
   if (hide) {
     document.body.style.overflow = "hidden";
     elements.forEach((el) => (el.style.display = "none"));
@@ -67,7 +67,7 @@ export function VerifyClient() {
   const boundRef = useRef<BoundTurnstileObject | null>(null);
   const siteKey = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY;
 
-  // hide on mount
+  // Hide navbar/footer while verifying
   useEffect(() => {
     devLog("Mounted – hide chrome");
     toggleGlobalChrome(true);
@@ -76,31 +76,6 @@ export function VerifyClient() {
       toggleGlobalChrome(false);
     };
   }, []);
-
-  // failsafe restore on load
-  useEffect(() => {
-    const restore = () => toggleGlobalChrome(false);
-    window.addEventListener("load", restore);
-    window.addEventListener("pageshow", restore);
-    return () => {
-      window.removeEventListener("load", restore);
-      window.removeEventListener("pageshow", restore);
-    };
-  }, []);
-
-  // routecomplete restore (ensures new layout DOM is visible)
-  useEffect(() => {
-    const handleRouteDone = () => {
-      devLog("routechangecomplete – final restore");
-      toggleGlobalChrome(false);
-    };
-    // @ts-ignore router.events only on client router
-    router.events?.on?.("routeChangeComplete", handleRouteDone);
-    return () => {
-      // @ts-ignore
-      router.events?.off?.("routeChangeComplete", handleRouteDone);
-    };
-  }, [router]);
 
   useEffect(() => {
     try {
@@ -157,26 +132,41 @@ export function VerifyClient() {
         const payload = await response.json().catch(() => ({ ok: false }));
         if (!response.ok || !payload.ok)
           throw new Error(payload.error || "Verification failed");
+
         sessionStorage.setItem("turnstile-verified", "1");
         devLog("Verification success");
         setStatus("success");
       } catch (e) {
         devLog("Verification error:", e);
-        downgradeToManual(e instanceof Error ? e.message : "Verification failed");
+        downgradeToManual(
+          e instanceof Error ? e.message : "Verification failed"
+        );
       }
     },
     [downgradeToManual]
   );
 
+  // Final robust redirect + restore sequence
   useEffect(() => {
     if (status !== "success") return;
+
+    const restoreAfterNewDOM = () => {
+      requestAnimationFrame(() => {
+        toggleGlobalChrome(false);
+        setTimeout(() => toggleGlobalChrome(false), 300);
+        setTimeout(() => toggleGlobalChrome(false), 1000);
+        setTimeout(() => toggleGlobalChrome(false), 2000);
+        devLog("Post-redirect restore triggered multiple times for safety");
+      });
+    };
+
     devLog("Scheduling redirect to:", redirectTarget);
-    const t = setTimeout(() => {
-      toggleGlobalChrome(false);
+    const timer = setTimeout(() => {
       router.replace(redirectTarget);
-      setTimeout(() => toggleGlobalChrome(false), 1200);
+      restoreAfterNewDOM();
     }, 600);
-    return () => clearTimeout(t);
+
+    return () => clearTimeout(timer);
   }, [status, router, redirectTarget]);
 
   const headline = "Verifying you are human. This may take a few seconds.";
@@ -236,7 +226,10 @@ export function VerifyClient() {
         {status === "error" && (
           <div className="mt-6 text-sm text-gray-700 bg-gray-50 border border-gray-200 p-3 rounded-md max-w-sm">
             Verification failed. Retry or contact{" "}
-            <a href={`mailto:${SUPPORT_EMAIL}`} className="text-blue-600 underline">
+            <a
+              href={`mailto:${SUPPORT_EMAIL}`}
+              className="text-blue-600 underline"
+            >
               {SUPPORT_EMAIL}
             </a>
             .
@@ -254,7 +247,8 @@ export function VerifyClient() {
 
       <div className="mt-16 border-t border-gray-200 w-full text-center py-4 text-xs text-gray-500">
         Ray ID: {rayId ?? "—"} <br />
-        Performance &amp; security by <span className="text-blue-500">Cloudflare</span>
+        Performance &amp; security by{" "}
+        <span className="text-blue-500">Cloudflare</span>
       </div>
     </div>
   );
