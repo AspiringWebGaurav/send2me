@@ -38,12 +38,28 @@ textarea:focus-visible {
 }
 
 /* scrollbar  */
-html, body {
+html,
+body {
   scrollbar-width: none;
   -ms-overflow-style: none;
 }
 ::-webkit-scrollbar {
   display: none;
+}
+
+/* Turnstile verification styles */
+.turnstile-container {
+  position: relative;
+  min-height: 65px;
+}
+
+.turnstile-container iframe {
+  margin: 0 auto;
+}
+
+/* Hide the turnstile branding when in auto mode */
+.turnstile-container iframe[style*="opacity: 0;"] {
+  visibility: hidden;
 }
 
 /* global.css */

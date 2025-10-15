@@ -282,25 +282,45 @@ export function VerifyClient() {
   }, [status, errorMessage]);
 
   return (
-    <div className="fixed inset-0 flex min-h-screen items-center justify-center bg-gray-50 px-4">
-      <div className="w-full max-w-md rounded-lg border border-gray-200 bg-white p-8 text-center shadow-sm">
-        <div className="space-y-4">
-          <h1 className="text-xl font-medium text-slate-800">
-            Verifying your browser before accessing {SITE_NAME}...
-          </h1>
-          <p className="text-sm text-slate-500">
-            This process is automatic. Your browser will redirect to your
-            requested content in a moment.
-          </p>
-          <div className="flex justify-center">
-            <span className="h-6 w-6 animate-spin rounded-full border-4 border-gray-300 border-t-blue-600" />
-          </div>
-          <p className={`text-sm ${supportingToneClass}`}>
-            {supportingMessage}
-          </p>
-        </div>
+    <div className="fixed inset-0 min-h-screen bg-white">
+      <div className="flex h-screen flex-col items-center justify-center text-center">
+        <h1 className="mb-6 text-3xl font-medium text-gray-900">{SITE_NAME}</h1>
+        <h2 className="mb-8 text-xl text-gray-700">
+          Verifying you are human. This may take a few seconds.
+        </h2>
 
-        <div className="mt-8 flex flex-col items-center justify-center space-y-3">
+        {status !== "success" && (
+          <div className="relative mb-4">
+            <div className="h-10 w-10">
+              <svg className="h-full w-full animate-spin" viewBox="0 0 24 24">
+                <circle
+                  className="opacity-25"
+                  cx="12"
+                  cy="12"
+                  r="10"
+                  stroke="rgb(209 213 219)"
+                  strokeWidth="4"
+                  fill="none"
+                />
+                <circle
+                  className="opacity-75"
+                  cx="12"
+                  cy="12"
+                  r="10"
+                  stroke="rgb(249 115 22)"
+                  strokeWidth="4"
+                  strokeDasharray="30 70"
+                  fill="none"
+                />
+              </svg>
+            </div>
+            <span className="mt-4 block text-sm text-gray-600">
+              Verifying...
+            </span>
+          </div>
+        )}
+
+        <div className="turnstile-container">
           {siteKey ? (
             <Turnstile
               key={widgetKey}
@@ -318,40 +338,43 @@ export function VerifyClient() {
               retry="auto"
             />
           ) : (
-            <div className="w-full rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-600">
-              Cloudflare Turnstile site key missing. Please contact the site
-              owner.
+            <div className="text-sm text-red-600">
+              Turnstile verification unavailable. Please contact support.
             </div>
           )}
         </div>
 
-        {status === "error" ? (
-          <div className="mt-8 w-full rounded-md border border-slate-200 bg-slate-50 p-4 text-left">
-            <p className="text-sm text-slate-600">
-              Verification failed. You can retry the challenge or contact{" "}
-              <a
-                className="font-medium text-blue-600 underline"
-                href={`mailto:${SUPPORT_EMAIL}`}
-              >
-                {SUPPORT_EMAIL}
-              </a>{" "}
-              for help.
-            </p>
+        {status === "error" && (
+          <div className="mt-6 text-center">
+            <p className="text-sm text-red-600">{errorMessage}</p>
             <button
               type="button"
               onClick={handleRetry}
-              className="mt-4 inline-flex items-center justify-center rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+              className="mt-4 rounded px-4 py-2 text-sm text-gray-600 hover:text-gray-900"
             >
-              Retry verification
+              Try again
             </button>
           </div>
-        ) : null}
+        )}
 
-        {rayId ? (
-          <div className="mt-8 border-t border-gray-200 pt-4">
-            <p className="text-xs text-slate-400">Ray ID: {rayId}</p>
+        <div className="absolute bottom-8 text-xs text-gray-400">
+          <p>
+            {SITE_NAME} needs to review the security of your connection before
+            proceeding.
+          </p>
+          {rayId && <p className="mt-2">Ray ID: {rayId}</p>}
+          <div className="mt-4 flex items-center justify-center space-x-2">
+            <span>Performance & security by</span>
+            <a
+              href="https://www.cloudflare.com"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-blue-500 hover:underline"
+            >
+              Cloudflare
+            </a>
           </div>
-        ) : null}
+        </div>
       </div>
     </div>
   );
