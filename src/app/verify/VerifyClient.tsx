@@ -211,7 +211,8 @@ export function VerifyClient() {
       {/* footer */}
       <div className="mt-16 border-t border-gray-200 w-full text-center py-4 text-xs text-gray-500">
         Ray ID: {rayId ?? "—"} <br />
-        Performance &amp; security by Cloudflare
+        Performance &amp; security by{" "}
+        <span className="text-blue-500">Cloudflare</span>
       </div>
     </div>
   );
