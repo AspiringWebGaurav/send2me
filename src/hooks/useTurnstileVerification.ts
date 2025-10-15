@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import { useTurnstileVerificationContext } from "@/components/turnstile/TurnstileProvider";
 import { describeTurnstileErrors } from "@/lib/turnstile";
 import type { TurnstileStatus } from "@/types/turnstile";
@@ -30,14 +30,18 @@ export interface UseTurnstileVerificationResult {
   markWidgetLoading: () => void;
 }
 
-function parseVerificationError(payload: unknown): { message: string; codes: string[] } {
+function parseVerificationError(payload: unknown): {
+  message: string;
+  codes: string[];
+} {
   if (!payload || typeof payload !== "object") {
     return { message: DEFAULT_ERROR_MESSAGE, codes: [] };
   }
 
   const data = payload as VerificationResponse;
   const codes =
-    Array.isArray(data.errors) && data.errors.every((code) => typeof code === "string")
+    Array.isArray(data.errors) &&
+    data.errors.every((code) => typeof code === "string")
       ? (data.errors as string[])
       : [];
 
@@ -57,6 +61,30 @@ export function useTurnstileVerification(): UseTurnstileVerificationResult {
   const { state, dispatch } = useTurnstileVerificationContext();
   const abortControllerRef = useRef<AbortController | null>(null);
 
+  useEffect(() => {
+    // Sync verification state from sessionStorage on mount
+    try {
+      const isVerified =
+        window.sessionStorage.getItem("turnstile-verified") === "1";
+      const verificationTime = parseInt(
+        window.sessionStorage.getItem("turnstile-verified-at") || "0",
+        10
+      );
+      const hasExpired = Date.now() - verificationTime > 3600000; // 1 hour expiration
+
+      if (isVerified && !hasExpired && state.status !== "success") {
+        dispatch({ type: "VERIFY_SUCCESS", token: "session" });
+      } else if (hasExpired) {
+        // Clear expired verification
+        window.sessionStorage.removeItem("turnstile-verified");
+        window.sessionStorage.removeItem("turnstile-verified-at");
+        dispatch({ type: "EXPIRED" });
+      }
+    } catch {
+      // Ignore storage access issues
+    }
+  }, []);
+
   const abortVerification = useCallback(() => {
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
@@ -70,7 +98,8 @@ export function useTurnstileVerification(): UseTurnstileVerificationResult {
       if (!trimmed) {
         dispatch({
           type: "VERIFY_FAILURE",
-          error: "Missing Turnstile token. Please retry the verification challenge.",
+          error:
+            "Missing Turnstile token. Please retry the verification challenge.",
         });
         return false;
       }
@@ -98,8 +127,8 @@ export function useTurnstileVerification(): UseTurnstileVerificationResult {
             "Content-Type": "application/json",
           },
           body: JSON.stringify({ token: trimmed }),
-          signal: controller.signal,
           cache: "no-store",
+          signal: controller.signal,
         });
 
         const payload: unknown = await response
@@ -115,6 +144,16 @@ export function useTurnstileVerification(): UseTurnstileVerificationResult {
           return false;
         }
 
+        // Store verification time for expiry checks
+        try {
+          window.sessionStorage.setItem("turnstile-verified", "1");
+          window.sessionStorage.setItem(
+            "turnstile-verified-at",
+            Date.now().toString()
+          );
+        } catch {
+          // Ignore storage access issues
+        }
         dispatch({ type: "VERIFY_SUCCESS", token: trimmed });
         return true;
       } catch (error) {
@@ -124,7 +163,9 @@ export function useTurnstileVerification(): UseTurnstileVerificationResult {
         }
 
         const message =
-          error instanceof Error ? error.message : "Turnstile verification request failed.";
+          error instanceof Error
+            ? error.message
+            : "Turnstile verification request failed.";
         dispatch({
           type: "VERIFY_FAILURE",
           error: message || DEFAULT_ERROR_MESSAGE,
@@ -136,7 +177,7 @@ export function useTurnstileVerification(): UseTurnstileVerificationResult {
         }
       }
     },
-    [abortVerification, dispatch, state.status, state.token],
+    [abortVerification, dispatch, state.status, state.token]
   );
 
   const reset = useCallback(() => {
@@ -157,7 +198,7 @@ export function useTurnstileVerification(): UseTurnstileVerificationResult {
         error: message,
       });
     },
-    [abortVerification, dispatch],
+    [abortVerification, dispatch]
   );
 
   const markWidgetReady = useCallback(() => {

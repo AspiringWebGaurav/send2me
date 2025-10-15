@@ -4,8 +4,6 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { Textarea } from "@/components/ui/Textarea";
 import { Switch } from "@/components/ui/Switch";
 import { Button } from "@/components/ui/Button";
-import { TurnstileWidget } from "@/components/turnstile/TurnstileWidget";
-import { useTurnstileVerification } from "@/hooks/useTurnstileVerification";
 import { useToast } from "@/components/Toast";
 import { useAuth } from "@/components/auth/AuthProvider";
 import { messageClientHint, validateMessage } from "@/lib/moderation";
@@ -14,81 +12,57 @@ import { cn } from "@/lib/utils";
 const MIN_MESSAGE_LENGTH = 2;
 const MAX_MESSAGE_LENGTH = 500;
 const COOLDOWN_SECONDS = 100;
+const COOLDOWN_STORAGE_KEY = "messageFormCooldownUntil";
 
 export interface MessageFormProps {
   toUsername: string;
 }
 
 /**
- * Collects feedback for the specified recipient with Turnstile protection.
+ * Collects feedback for the specified recipient (no Turnstile).
+ * Adds cooldown persistence using localStorage.
  */
 export function MessageForm({ toUsername }: MessageFormProps) {
   const [message, setMessage] = useState("");
   const [anon, setAnon] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [cooldown, setCooldown] = useState<number>(0);
-  const [widgetRefreshKey, setWidgetRefreshKey] = useState(0);
 
   const { push } = useToast();
   const { user, signIn, getToken } = useAuth();
-  const {
-    status: turnstileStatus,
-    token: turnstileToken,
-    isSuccessful: isTurnstileVerified,
-    isLoading: isTurnstileLoading,
-    isWidgetReady,
-    hasFailed: hasTurnstileFailed,
-    error: turnstileError,
-    reset: resetTurnstile,
-  } = useTurnstileVerification();
+
+  // --- Load persisted cooldown on mount ---
+  useEffect(() => {
+    const stored = localStorage.getItem(COOLDOWN_STORAGE_KEY);
+    if (stored) {
+      const expiry = parseInt(stored, 10);
+      const now = Date.now();
+      if (expiry > now) {
+        setCooldown(Math.ceil((expiry - now) / 1000));
+      } else {
+        localStorage.removeItem(COOLDOWN_STORAGE_KEY);
+      }
+    }
+  }, []);
+
+  // --- Cooldown countdown logic ---
+  useEffect(() => {
+    if (cooldown <= 0) return;
+    const timer = setInterval(() => {
+      setCooldown((prev) => {
+        const next = prev > 0 ? prev - 1 : 0;
+        if (next <= 0) localStorage.removeItem(COOLDOWN_STORAGE_KEY);
+        return next;
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [cooldown]);
 
   const hint = useMemo(() => messageClientHint(message), [message]);
   const characterCount = message.length;
   const isTooLong = characterCount > MAX_MESSAGE_LENGTH;
   const meetsLengthRequirement = message.trim().length >= MIN_MESSAGE_LENGTH;
   const isInteractiveDisabled = submitting || cooldown > 0;
-  const turnstileConfigured = Boolean(
-    process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY
-  );
-
-  const verificationLabel = useMemo(() => {
-    if (!turnstileConfigured) {
-      return "Verification unavailable. Contact support.";
-    }
-    if (!isWidgetReady) {
-      return "Preparing verification...";
-    }
-    if (hasTurnstileFailed || turnstileStatus === "expired") {
-      return "Verification failed, retry below.";
-    }
-    if (isTurnstileLoading) {
-      return "Verifying...";
-    }
-    if (isTurnstileVerified) {
-      return "Verification complete.";
-    }
-    return "Complete verification to enable sending.";
-  }, [
-    hasTurnstileFailed,
-    isTurnstileLoading,
-    isTurnstileVerified,
-    isWidgetReady,
-    turnstileConfigured,
-    turnstileStatus,
-  ]);
-
-  useEffect(() => {
-    if (cooldown <= 0) return;
-    const timer = setInterval(() => {
-      setCooldown((prev) => (prev > 0 ? prev - 1 : 0));
-    }, 1000);
-    return () => clearInterval(timer);
-  }, [cooldown]);
-
-  const handleTurnstileReset = useCallback(() => {
-    resetTurnstile();
-    setWidgetRefreshKey((prev) => prev + 1);
-  }, [resetTurnstile]);
 
   const handleSubmit = useCallback(
     async (event: FormEvent<HTMLFormElement>) => {
@@ -108,15 +82,6 @@ export function MessageForm({ toUsername }: MessageFormProps) {
         return;
       }
 
-      if (!isTurnstileVerified) {
-        push({
-          title: "Verify to send",
-          description: "Please complete the Turnstile verification first.",
-          type: "warning",
-        });
-        return;
-      }
-
       if (!anon && !user) {
         push({
           title: "Sign in required",
@@ -124,15 +89,6 @@ export function MessageForm({ toUsername }: MessageFormProps) {
           type: "warning",
         });
         await signIn();
-        return;
-      }
-
-      if (!turnstileToken) {
-        push({
-          title: "Verification required",
-          description: "Please complete the verification challenge.",
-          type: "warning",
-        });
         return;
       }
 
@@ -166,7 +122,6 @@ export function MessageForm({ toUsername }: MessageFormProps) {
             to: toUsername,
             text: message,
             anon,
-            turnstileToken,
           }),
         });
 
@@ -175,6 +130,7 @@ export function MessageForm({ toUsername }: MessageFormProps) {
           throw new Error(data.error ?? "Unable to send message");
         }
 
+        // success
         setMessage("");
         setAnon(true);
         push({
@@ -183,8 +139,11 @@ export function MessageForm({ toUsername }: MessageFormProps) {
           description:
             "Thanks for keeping Send2me respectful. You can send another message soon.",
         });
+
+        // start cooldown & persist to localStorage
+        const expiry = Date.now() + COOLDOWN_SECONDS * 1000;
+        localStorage.setItem(COOLDOWN_STORAGE_KEY, expiry.toString());
         setCooldown(COOLDOWN_SECONDS);
-        handleTurnstileReset();
       } catch (error) {
         push({
           title: "Could not send",
@@ -192,42 +151,19 @@ export function MessageForm({ toUsername }: MessageFormProps) {
           description:
             error instanceof Error ? error.message : "Please try again later.",
         });
-        handleTurnstileReset();
       } finally {
         setSubmitting(false);
       }
     },
-    [
-      anon,
-      getToken,
-      handleTurnstileReset,
-      isTurnstileVerified,
-      message,
-      push,
-      signIn,
-      toUsername,
-      user,
-      turnstileToken,
-    ]
+    [anon, getToken, message, push, signIn, toUsername, user]
   );
 
   const isSendDisabled =
-    submitting ||
-    cooldown > 0 ||
-    isTooLong ||
-    !meetsLengthRequirement ||
-    !turnstileConfigured ||
-    !isWidgetReady ||
-    !isTurnstileVerified ||
-    !turnstileToken ||
-    isTurnstileLoading;
+    submitting || cooldown > 0 || isTooLong || !meetsLengthRequirement;
 
   const sendButtonClasses = isSendDisabled
     ? "!bg-slate-200 !text-slate-400 !shadow-none"
     : "!bg-blue-500 !text-white hover:!bg-blue-600";
-
-  const showVerificationHint =
-    hasTurnstileFailed || turnstileStatus === "expired";
 
   return (
     <form
@@ -271,7 +207,7 @@ export function MessageForm({ toUsername }: MessageFormProps) {
         )}
       </div>
 
-           {/* Bottom section: Switch → Turnstile → Send button */}
+      {/* Bottom section: Switch → Send button */}
       <div className="flex flex-col items-center gap-4">
         {/* Send anonymously switch */}
         <div className="flex justify-center w-full">
@@ -286,24 +222,6 @@ export function MessageForm({ toUsername }: MessageFormProps) {
           />
         </div>
 
-        {/* Turnstile verification */}
-        <div className="flex flex-col items-center gap-2 w-full">
-          <TurnstileWidget refreshKey={widgetRefreshKey} />
-          <p className="text-xs text-slate-500">{verificationLabel}</p>
-          {showVerificationHint && (
-            <div className="flex items-center gap-2 rounded-xl bg-red-50 px-3 py-2 text-xs text-red-600 shadow-sm">
-              <span>{turnstileError ?? "Verification failed. Try again."}</span>
-              <button
-                type="button"
-                className="font-semibold underline decoration-red-400 underline-offset-2 transition hover:text-red-700"
-                onClick={handleTurnstileReset}
-              >
-                Retry
-              </button>
-            </div>
-          )}
-        </div>
-
         {/* Send button */}
         <div className="flex justify-center w-full">
           <Button
@@ -311,7 +229,7 @@ export function MessageForm({ toUsername }: MessageFormProps) {
             variant="primary"
             className={cn(
               "min-w-[150px] rounded-2xl font-semibold transition-colors disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400 disabled:shadow-none",
-              sendButtonClasses,
+              sendButtonClasses
             )}
             loading={submitting}
             disabled={isSendDisabled}
@@ -320,7 +238,6 @@ export function MessageForm({ toUsername }: MessageFormProps) {
           </Button>
         </div>
       </div>
-
     </form>
   );
 }
