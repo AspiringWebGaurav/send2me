@@ -12,7 +12,12 @@ export const metadata: Metadata = {
 
 export const dynamic = "force-dynamic";
 
-export default function VerifyPage() {
+export default function VerifyPage({
+  searchParams,
+}: {
+  searchParams: { returnTo?: string };
+}) {
+  // Note: VerifyClient handles returnTo through searchParams internally
   return (
     <Suspense fallback={null}>
       <VerifyClient />

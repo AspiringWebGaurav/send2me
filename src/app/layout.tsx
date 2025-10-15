@@ -71,12 +71,16 @@ export default function RootLayout({
     headerList.get("x-matched-path") ??
     headerList.get("next-url") ??
     "";
-  const shouldHideChrome = invokedPath === "/verify" || invokedPath.startsWith("/verify/");
+  const shouldHideChrome =
+    invokedPath === "/verify" || invokedPath.startsWith("/verify/");
 
   return (
     <html lang="en" className={inter.variable}>
       <body className="bg-white text-slate-900 antialiased">
-        <Script id="verification-session-bootstrap" strategy="beforeInteractive">
+        <Script
+          id="verification-session-bootstrap"
+          strategy="beforeInteractive"
+        >
           {`
             (function () {
               var COOKIE_NAME = "verified";
@@ -122,8 +126,8 @@ export default function RootLayout({
                   }
                   var currentPath = window.location.pathname + window.location.search;
                   if (!currentPath.startsWith("/verify")) {
-                    var redirectTarget = currentPath || "/";
-                    window.location.replace("/verify?redirectTo=" + encodeURIComponent(redirectTarget));
+                    var returnTarget = currentPath || "/";
+                    window.location.replace("/verify?returnTo=" + encodeURIComponent(returnTarget));
                   }
                   return;
                 }

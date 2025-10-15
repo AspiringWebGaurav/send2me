@@ -40,10 +40,10 @@ function sanitizeRedirectTarget(target: string | null): string {
 export function VerifyClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const redirectParam = searchParams?.get("redirectTo") ?? null;
-  const redirectTarget = useMemo(
-    () => sanitizeRedirectTarget(redirectParam),
-    [redirectParam]
+  const returnParam = searchParams?.get("returnTo") ?? null;
+  const returnTarget = useMemo(
+    () => sanitizeRedirectTarget(returnParam),
+    [returnParam]
   );
 
   const [rayId, setRayId] = useState<string | null>(null);
@@ -161,9 +161,9 @@ export function VerifyClient() {
     }
 
     // Force a hard redirect instead of using Next.js router to ensure a fresh page load
-    const redirectUrl = redirectTarget || "/";
+    const redirectUrl = returnTarget || "/";
     window.location.href = redirectUrl;
-  }, [status, redirectTarget, setChromeHidden]);
+  }, [status, returnTarget, setChromeHidden]);
 
   const handleVerify = useCallback(
     async (token: string) => {
