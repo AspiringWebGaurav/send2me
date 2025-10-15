@@ -3,17 +3,16 @@
 import dynamic from "next/dynamic";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { BoundTurnstileObject } from "react-turnstile";
+import type { BoundTurnstileObject, TurnstileProps } from "react-turnstile";
 
-const Turnstile = dynamic(
+const Turnstile = dynamic<TurnstileProps>(
   () =>
     import("react-turnstile").then((mod) => {
-      if ("Turnstile" in mod) {
-        return mod.Turnstile;
-      }
-      return mod.default;
+      const TurnstileComponent =
+        "Turnstile" in mod ? mod.Turnstile : mod.default;
+      return TurnstileComponent as React.ComponentType<TurnstileProps>;
     }),
-  { ssr: false },
+  { ssr: false }
 );
 
 type VerificationMode = "auto" | "manual";
@@ -41,11 +40,16 @@ export function VerifyClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const redirectParam = searchParams?.get("redirectTo") ?? null;
-  const redirectTarget = useMemo(() => sanitizeRedirectTarget(redirectParam), [redirectParam]);
+  const redirectTarget = useMemo(
+    () => sanitizeRedirectTarget(redirectParam),
+    [redirectParam]
+  );
 
   const [rayId, setRayId] = useState<string | null>(null);
   const [mode, setMode] = useState<VerificationMode>("auto");
-  const [status, setStatus] = useState<"idle" | "verifying" | "success" | "error">("idle");
+  const [status, setStatus] = useState<
+    "idle" | "verifying" | "success" | "error"
+  >("idle");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [autoTriggerArmed, setAutoTriggerArmed] = useState(false);
   const [widgetKey, setWidgetKey] = useState(0);
@@ -65,8 +69,13 @@ export function VerifyClient() {
 
   useEffect(() => {
     document.body.classList.add("chrome-hidden");
-    return () => {
+    const cleanup = () => {
       document.body.classList.remove("chrome-hidden");
+    };
+    window.addEventListener("beforeunload", cleanup);
+    return () => {
+      cleanup();
+      window.removeEventListener("beforeunload", cleanup);
     };
   }, []);
 
@@ -99,7 +108,7 @@ export function VerifyClient() {
       }
       resetWidget();
     },
-    [resetWidget],
+    [resetWidget]
   );
 
   const handleRetry = useCallback(() => {
@@ -143,6 +152,7 @@ export function VerifyClient() {
   useEffect(() => {
     if (status !== "success") return;
     const timeout = window.setTimeout(() => {
+      document.body.classList.remove("chrome-hidden");
       router.replace(redirectTarget);
     }, 600);
 
@@ -196,7 +206,7 @@ export function VerifyClient() {
         downgradeToManual(message);
       }
     },
-    [downgradeToManual],
+    [downgradeToManual]
   );
 
   const handleLoad = useCallback(
@@ -206,28 +216,36 @@ export function VerifyClient() {
         bound.execute();
       }
     },
-    [mode, autoTriggerArmed],
+    [mode, autoTriggerArmed]
   );
 
   const handleError = useCallback(
     (_error?: unknown) => {
-      downgradeToManual("Verification failed. Please complete the challenge below.");
+      downgradeToManual(
+        "Verification failed. Please complete the challenge below."
+      );
     },
-    [downgradeToManual],
+    [downgradeToManual]
   );
 
   const handleTimeout = useCallback(() => {
-    downgradeToManual("Verification timed out. Please complete the challenge below.");
+    downgradeToManual(
+      "Verification timed out. Please complete the challenge below."
+    );
   }, [downgradeToManual]);
 
   const handleExpire = useCallback(
-    () => downgradeToManual("Verification expired. Please refresh the challenge."),
-    [downgradeToManual],
+    () =>
+      downgradeToManual("Verification expired. Please refresh the challenge."),
+    [downgradeToManual]
   );
 
   const handleUnsupported = useCallback(
-    () => downgradeToManual("Your browser requires manual verification. Please check the box below."),
-    [downgradeToManual],
+    () =>
+      downgradeToManual(
+        "Your browser requires manual verification. Please check the box below."
+      ),
+    [downgradeToManual]
   );
 
   const supportingMessage = useMemo(() => {
@@ -267,7 +285,8 @@ export function VerifyClient() {
             Verifying your browser before accessing {SITE_NAME}...
           </h1>
           <p className="text-sm text-slate-500">
-            This process is automatic. Your browser will redirect to your requested content in a moment.
+            This process is automatic. Your browser will redirect to your
+            requested content in a moment.
           </p>
           <div className="flex justify-center">
             <span className="h-6 w-6 animate-spin rounded-full border-4 border-gray-300 border-t-blue-600" />
@@ -296,7 +315,8 @@ export function VerifyClient() {
             />
           ) : (
             <div className="w-full rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-600">
-              Cloudflare Turnstile site key missing. Please contact the site owner.
+              Cloudflare Turnstile site key missing. Please contact the site
+              owner.
             </div>
           )}
         </div>
@@ -305,7 +325,10 @@ export function VerifyClient() {
           <div className="mt-8 w-full rounded-md border border-slate-200 bg-slate-50 p-4 text-left">
             <p className="text-sm text-slate-600">
               Verification failed. You can retry the challenge or contact{" "}
-              <a className="font-medium text-blue-600 underline" href={`mailto:${SUPPORT_EMAIL}`}>
+              <a
+                className="font-medium text-blue-600 underline"
+                href={`mailto:${SUPPORT_EMAIL}`}
+              >
                 {SUPPORT_EMAIL}
               </a>{" "}
               for help.
