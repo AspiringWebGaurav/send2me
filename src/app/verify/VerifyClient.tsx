@@ -8,12 +8,10 @@ import type { BoundTurnstileObject } from "react-turnstile";
 const Turnstile = dynamic(
   () =>
     import("react-turnstile").then((mod) => {
-      if ("Turnstile" in mod) {
-        return mod.Turnstile;
-      }
-      return mod.default;
+      if ("Turnstile" in mod) return mod.Turnstile as React.ComponentType<any>;
+      return mod.default as React.ComponentType<any>;
     }),
-  { ssr: false },
+  { ssr: false }
 );
 
 type VerificationMode = "auto" | "manual";
@@ -31,9 +29,7 @@ function generateRayId(): string {
 }
 
 function sanitizeRedirectTarget(target: string | null): string {
-  if (!target) return "/";
-  if (!target.startsWith("/")) return "/";
-  if (target.startsWith("//")) return "/";
+  if (!target || !target.startsWith("/") || target.startsWith("//")) return "/";
   return target;
 }
 
@@ -41,290 +37,181 @@ export function VerifyClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const redirectParam = searchParams?.get("redirectTo") ?? null;
-  const redirectTarget = useMemo(() => sanitizeRedirectTarget(redirectParam), [redirectParam]);
+  const redirectTarget = useMemo(
+    () => sanitizeRedirectTarget(redirectParam),
+    [redirectParam]
+  );
 
   const [rayId, setRayId] = useState<string | null>(null);
   const [mode, setMode] = useState<VerificationMode>("auto");
-  const [status, setStatus] = useState<"idle" | "verifying" | "success" | "error">("idle");
+  const [status, setStatus] = useState<
+    "idle" | "verifying" | "success" | "error"
+  >("idle");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [autoTriggerArmed, setAutoTriggerArmed] = useState(false);
   const [widgetKey, setWidgetKey] = useState(0);
+  const [widgetLoaded, setWidgetLoaded] = useState(false);
 
   const boundRef = useRef<BoundTurnstileObject | null>(null);
-  const autoTriggerTimeoutRef = useRef<number | null>(null);
-
   const siteKey = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY;
 
   useEffect(() => {
-    try {
-      window.sessionStorage.removeItem("turnstile-verified");
-    } catch {
-      // Ignore storage access issues.
-    }
-  }, []);
-
-  useEffect(() => {
-    document.body.classList.add("chrome-hidden");
+    // Hide page chrome while verifying
+    document.body.style.overflow = "hidden";
+    const nav = document.querySelector("nav");
+    const footers = document.querySelectorAll("footer");
+    nav?.setAttribute("style", "display:none!important");
+    footers.forEach((f) => f.setAttribute("style", "display:none!important"));
     return () => {
-      document.body.classList.remove("chrome-hidden");
+      document.body.style.overflow = "";
+      nav?.removeAttribute("style");
+      footers.forEach((f) => f.removeAttribute("style"));
     };
   }, []);
 
   useEffect(() => {
-    if (!rayId) {
-      setRayId(generateRayId());
-    }
+    try {
+      sessionStorage.removeItem("turnstile-verified");
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    if (!rayId) setRayId(generateRayId());
   }, [rayId]);
 
   const resetWidget = useCallback(() => {
-    setAutoTriggerArmed(false);
-    if (autoTriggerTimeoutRef.current) {
-      window.clearTimeout(autoTriggerTimeoutRef.current);
-      autoTriggerTimeoutRef.current = null;
-    }
     boundRef.current?.reset();
     boundRef.current = null;
     setWidgetKey((prev) => prev + 1);
+    setWidgetLoaded(false);
   }, []);
 
   const downgradeToManual = useCallback(
-    (message?: string) => {
+    (msg?: string) => {
       setStatus("error");
-      setErrorMessage(message ?? "Verification failed. Please try again.");
+      setErrorMessage(msg ?? "Verification failed. Please try again.");
       setMode("manual");
-      try {
-        window.sessionStorage.removeItem("turnstile-verified");
-      } catch {
-        // Ignore storage access issues.
-      }
       resetWidget();
     },
-    [resetWidget],
+    [resetWidget]
   );
 
   const handleRetry = useCallback(() => {
     setStatus("idle");
     setErrorMessage(null);
     setMode("manual");
-    try {
-      window.sessionStorage.removeItem("turnstile-verified");
-    } catch {
-      // Ignore storage access issues.
-    }
     resetWidget();
   }, [resetWidget]);
-
-  useEffect(() => {
-    if (mode !== "auto") {
-      return;
-    }
-    if (autoTriggerTimeoutRef.current) {
-      window.clearTimeout(autoTriggerTimeoutRef.current);
-    }
-
-    autoTriggerTimeoutRef.current = window.setTimeout(() => {
-      setAutoTriggerArmed(true);
-    }, AUTO_TRIGGER_DELAY_MS);
-
-    return () => {
-      if (autoTriggerTimeoutRef.current) {
-        window.clearTimeout(autoTriggerTimeoutRef.current);
-        autoTriggerTimeoutRef.current = null;
-      }
-    };
-  }, [mode]);
-
-  useEffect(() => {
-    if (mode === "auto" && autoTriggerArmed && boundRef.current) {
-      boundRef.current.execute();
-    }
-  }, [mode, autoTriggerArmed]);
-
-  useEffect(() => {
-    if (status !== "success") return;
-    const timeout = window.setTimeout(() => {
-      router.replace(redirectTarget);
-    }, 600);
-
-    return () => {
-      window.clearTimeout(timeout);
-    };
-  }, [status, router, redirectTarget]);
 
   const handleVerify = useCallback(
     async (token: string) => {
       if (!token) return;
       setStatus("verifying");
-      setErrorMessage(null);
-
       try {
         const response = await fetch("/api/verify", {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ token }),
-          cache: "no-store",
-          credentials: "same-origin",
         });
-
-        const payload: unknown = await response
-          .json()
-          .catch(() => ({ ok: false, error: "Verification failed" }));
-
-        const ok = Boolean((payload as { ok?: unknown })?.ok === true);
-
-        if (!response.ok || !ok) {
-          const message =
-            typeof (payload as { error?: unknown })?.error === "string"
-              ? ((payload as { error?: unknown }).error as string)
-              : "Verification failed";
-          throw new Error(message);
-        }
-
-        try {
-          window.sessionStorage.setItem("turnstile-verified", "1");
-        } catch {
-          // sessionStorage may be unavailable; ignore.
-        }
+        const payload = await response.json().catch(() => ({ ok: false }));
+        if (!response.ok || !payload.ok)
+          throw new Error(payload.error || "Verification failed");
+        sessionStorage.setItem("turnstile-verified", "1");
         setStatus("success");
-      } catch (error) {
-        const message =
-          error instanceof Error && error.message
-            ? error.message
-            : "Verification failed";
-        downgradeToManual(message);
+      } catch (e) {
+        downgradeToManual(
+          e instanceof Error ? e.message : "Verification failed"
+        );
       }
     },
-    [downgradeToManual],
+    [downgradeToManual]
   );
 
-  const handleLoad = useCallback(
-    (_widgetId: string, bound: BoundTurnstileObject) => {
-      boundRef.current = bound;
-      if (mode === "auto" && autoTriggerArmed) {
-        bound.execute();
-      }
-    },
-    [mode, autoTriggerArmed],
-  );
+  useEffect(() => {
+    if (status !== "success") return;
+    const t = setTimeout(() => router.replace(redirectTarget), 600);
+    return () => clearTimeout(t);
+  }, [status, router, redirectTarget]);
 
-  const handleError = useCallback(
-    (_error?: unknown) => {
-      downgradeToManual("Verification failed. Please complete the challenge below.");
-    },
-    [downgradeToManual],
-  );
+  const headline = "Verifying you are human. This may take a few seconds.";
+  const subline = `${SITE_NAME.toLowerCase()} needs to review the security of your connection before proceeding.`;
 
-  const handleTimeout = useCallback(() => {
-    downgradeToManual("Verification timed out. Please complete the challenge below.");
-  }, [downgradeToManual]);
-
-  const handleExpire = useCallback(
-    () => downgradeToManual("Verification expired. Please refresh the challenge."),
-    [downgradeToManual],
-  );
-
-  const handleUnsupported = useCallback(
-    () => downgradeToManual("Your browser requires manual verification. Please check the box below."),
-    [downgradeToManual],
-  );
-
-  const supportingMessage = useMemo(() => {
-    if (status === "success") {
-      return "Success! Redirecting you to your destination...";
-    }
-    if (errorMessage) {
-      return errorMessage;
-    }
-    if (mode === "manual") {
+  const helper = useMemo(() => {
+    if (status === "success") return "Success! Redirecting…";
+    if (errorMessage) return errorMessage;
+    if (mode === "manual")
       return "Please complete the Turnstile challenge to continue.";
-    }
-    if (status === "verifying") {
-      return "Hang tight while we verify your browser...";
-    }
+    if (status === "verifying") return "Verifying your connection…";
     return "Checking your connection before granting access...";
-  }, [mode, status, errorMessage]);
-
-  const supportingToneClass = useMemo(() => {
-    if (status === "success") {
-      return "text-emerald-600";
-    }
-    if (errorMessage || status === "error") {
-      return "text-red-600";
-    }
-    if (status === "verifying") {
-      return "text-slate-600";
-    }
-    return "text-slate-500";
-  }, [status, errorMessage]);
+  }, [status, errorMessage, mode]);
 
   return (
-    <div className="fixed inset-0 flex min-h-screen items-center justify-center bg-gray-50 px-4">
-      <div className="w-full max-w-md rounded-lg border border-gray-200 bg-white p-8 text-center shadow-sm">
-        <div className="space-y-4">
-          <h1 className="text-xl font-medium text-slate-800">
-            Verifying your browser before accessing {SITE_NAME}...
-          </h1>
-          <p className="text-sm text-slate-500">
-            This process is automatic. Your browser will redirect to your requested content in a moment.
-          </p>
-          <div className="flex justify-center">
-            <span className="h-6 w-6 animate-spin rounded-full border-4 border-gray-300 border-t-blue-600" />
-          </div>
-          <p className={`text-sm ${supportingToneClass}`}>
-            {supportingMessage}
-          </p>
-        </div>
+    <div className="fixed inset-0 z-[9999] flex min-h-screen flex-col items-center justify-center bg-white text-gray-900">
+      <div className="flex flex-col items-center px-4 text-center">
+        {/* site name */}
+        <h1 className="text-4xl sm:text-5xl font-semibold text-gray-800">
+          {SITE_NAME.toLowerCase()}
+        </h1>
 
-        <div className="mt-8 flex flex-col items-center justify-center space-y-3">
+        {/* headline */}
+        <p className="mt-4 text-lg text-gray-800">{headline}</p>
+
+        {/* Cloudflare Turnstile visible widget */}
+        <div className="mt-8">
           {siteKey ? (
-            <Turnstile
-              key={widgetKey}
-              sitekey={siteKey}
-              appearance={mode === "auto" ? "execute" : "always"}
-              execution={mode === "auto" ? "execute" : "render"}
-              {...(mode === "manual" ? { size: "normal" as const } : {})}
-              onVerify={handleVerify}
-              onLoad={handleLoad}
-              onTimeout={handleTimeout}
-              onError={handleError}
-              onExpire={handleExpire}
-              onUnsupported={handleUnsupported}
-              refreshExpired="auto"
-              retry="auto"
-            />
+            <div className="flex flex-col items-center">
+              {!widgetLoaded && (
+                <div className="flex items-center justify-center mb-4">
+                  <span className="h-6 w-6 animate-spin rounded-full border-4 border-gray-300 border-t-green-600" />
+                </div>
+              )}
+              <Turnstile
+                key={widgetKey}
+                sitekey={siteKey}
+                appearance="always"
+                execution="render"
+                onVerify={handleVerify}
+                onLoad={() => setWidgetLoaded(true)}
+                onError={() => downgradeToManual("Verification failed.")}
+                refreshExpired="auto"
+                retry="auto"
+              />
+              <p className="mt-3 text-xs text-gray-500 text-center">{helper}</p>
+            </div>
           ) : (
-            <div className="w-full rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-600">
-              Cloudflare Turnstile site key missing. Please contact the site owner.
+            <div className="mt-6 text-center text-sm font-medium text-red-600 bg-red-50 border border-red-200 px-4 py-2 rounded">
+              Cloudflare Turnstile site key missing. Contact {SUPPORT_EMAIL}.
             </div>
           )}
         </div>
 
-        {status === "error" ? (
-          <div className="mt-8 w-full rounded-md border border-slate-200 bg-slate-50 p-4 text-left">
-            <p className="text-sm text-slate-600">
-              Verification failed. You can retry the challenge or contact{" "}
-              <a className="font-medium text-blue-600 underline" href={`mailto:${SUPPORT_EMAIL}`}>
-                {SUPPORT_EMAIL}
-              </a>{" "}
-              for help.
-            </p>
-            <button
-              type="button"
-              onClick={handleRetry}
-              className="mt-4 inline-flex items-center justify-center rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+        {/* manual fallback */}
+        {status === "error" && (
+          <div className="mt-6 text-sm text-gray-700 bg-gray-50 border border-gray-200 p-3 rounded-md max-w-sm">
+            Verification failed. Retry the challenge or contact{" "}
+            <a
+              href={`mailto:${SUPPORT_EMAIL}`}
+              className="text-blue-600 underline"
             >
-              Retry verification
+              {SUPPORT_EMAIL}
+            </a>
+            .
+            <button
+              onClick={handleRetry}
+              className="mt-3 bg-blue-600 text-white text-xs font-medium px-3 py-1.5 rounded hover:bg-blue-700"
+            >
+              Retry
             </button>
           </div>
-        ) : null}
+        )}
 
-        {rayId ? (
-          <div className="mt-8 border-t border-gray-200 pt-4">
-            <p className="text-xs text-slate-400">Ray ID: {rayId}</p>
-          </div>
-        ) : null}
+        {/* subline */}
+        <p className="mt-10 text-base text-gray-800">{subline}</p>
+      </div>
+
+      {/* footer */}
+      <div className="mt-16 border-t border-gray-200 w-full text-center py-4 text-xs text-gray-500">
+        Ray ID: {rayId ?? "—"} <br />
+        Performance &amp; security by Cloudflare
       </div>
     </div>
   );
