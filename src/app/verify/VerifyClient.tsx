@@ -5,7 +5,6 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { BoundTurnstileObject } from "react-turnstile";
 
-// Dynamic import
 const Turnstile = dynamic<React.ComponentType<any>>(
   async () => {
     const mod: any = await import("react-turnstile");
@@ -19,18 +18,11 @@ const SITE_NAME = process.env.NEXT_PUBLIC_SITE_NAME ?? "Send2me";
 const SUPPORT_EMAIL = "support@send2me.app";
 const IS_PROD = process.env.NODE_ENV === "production";
 
-// ==========================================================================
-// 🔍 Production-aware logger
-// ==========================================================================
-function debugLog(...args: any[]) {
+function log(...args: any[]) {
   const time = new Date().toISOString();
-  const env = IS_PROD ? "PROD" : "DEV";
-  console.log(`[VerifyClient ${env} @ ${time}]`, ...args);
+  console.log(`[VerifyClient ${IS_PROD ? "PROD" : "DEV"} @ ${time}]`, ...args);
 }
 
-// ==========================================================================
-// Helpers
-// ==========================================================================
 function generateRayId(): string {
   try {
     return crypto.randomUUID().replace(/-/g, "").slice(0, 8);
@@ -44,14 +36,11 @@ function sanitizeRedirectTarget(target: string | null): string {
   return target;
 }
 
-// ==========================================================================
-// DOM manipulation
-// ==========================================================================
 function toggleGlobalChrome(hide: boolean) {
   const elements = document.querySelectorAll<HTMLElement>(
     "header, nav, footer"
   );
-  debugLog(hide ? "→ Hiding chrome" : "→ Restoring chrome", elements.length, {
+  log(hide ? "→ Hiding chrome" : "→ Restoring chrome", elements.length, {
     elements: Array.from(elements).map((el) => el.tagName),
   });
 
@@ -64,9 +53,6 @@ function toggleGlobalChrome(hide: boolean) {
   }
 }
 
-// ==========================================================================
-// Component
-// ==========================================================================
 export function VerifyClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -84,37 +70,30 @@ export function VerifyClient() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [widgetKey, setWidgetKey] = useState(0);
   const [widgetLoaded, setWidgetLoaded] = useState(false);
+
   const boundRef = useRef<BoundTurnstileObject | null>(null);
   const siteKey = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY;
 
-  // ==========================================================================
-  // Mount/unmount
-  // ==========================================================================
+  // --- Hide chrome on mount ---
   useEffect(() => {
-    debugLog("MOUNT: hiding chrome");
+    log("MOUNT: hiding chrome");
     toggleGlobalChrome(true);
     return () => {
-      debugLog("UNMOUNT: restoring chrome");
+      log("UNMOUNT: restoring chrome");
       toggleGlobalChrome(false);
     };
   }, []);
 
   useEffect(() => {
-    try {
-      sessionStorage.removeItem("turnstile-verified");
-    } catch {}
-  }, []);
-
-  useEffect(() => {
     if (!rayId) {
       const id = generateRayId();
-      debugLog("Generated Ray ID:", id);
+      log("Generated Ray ID:", id);
       setRayId(id);
     }
   }, [rayId]);
 
   const resetWidget = useCallback(() => {
-    debugLog("Resetting Turnstile widget");
+    log("Resetting Turnstile widget");
     boundRef.current?.reset?.();
     boundRef.current = null;
     setWidgetKey((prev) => prev + 1);
@@ -123,7 +102,7 @@ export function VerifyClient() {
 
   const downgradeToManual = useCallback(
     (msg?: string) => {
-      debugLog("Downgrading to manual mode:", msg);
+      log("Downgrade to manual:", msg);
       setStatus("error");
       setErrorMessage(msg ?? "Verification failed. Please try again.");
       setMode("manual");
@@ -133,36 +112,32 @@ export function VerifyClient() {
   );
 
   const handleRetry = useCallback(() => {
-    debugLog("Manual retry clicked");
+    log("Retry clicked");
     setStatus("idle");
     setErrorMessage(null);
     setMode("manual");
     resetWidget();
   }, [resetWidget]);
 
-  // ==========================================================================
-  // Turnstile verification
-  // ==========================================================================
   const handleVerify = useCallback(
     async (token: string) => {
       if (!token) return;
       setStatus("verifying");
-      debugLog("Verification started → token:", token.slice(0, 12) + "...");
+      log("Verification started", token.slice(0, 12) + "...");
       try {
-        const response = await fetch("/api/verify", {
+        const res = await fetch("/api/verify", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ token }),
         });
-        const payload = await response.json().catch(() => ({ ok: false }));
-        if (!response.ok || !payload.ok)
+        const payload = await res.json().catch(() => ({ ok: false }));
+        if (!res.ok || !payload.ok)
           throw new Error(payload.error || "Verification failed");
-
         sessionStorage.setItem("turnstile-verified", "1");
-        debugLog("Verification success ✅");
+        log("Verification success ✅");
         setStatus("success");
       } catch (e) {
-        debugLog("Verification error ❌", e);
+        log("Verification error ❌", e);
         downgradeToManual(
           e instanceof Error ? e.message : "Verification failed"
         );
@@ -171,38 +146,47 @@ export function VerifyClient() {
     [downgradeToManual]
   );
 
-  // ==========================================================================
-  // Redirect + restore sequence (production-observable)
-  // ==========================================================================
+  // --- Redirect and robust restore ---
   useEffect(() => {
     if (status !== "success") return;
 
-    const restoreAfterNewDOM = () => {
-      const attempt = (label: string) => {
-        debugLog(`Restore attempt: ${label}`);
-        toggleGlobalChrome(false);
-      };
+    const observeAndRestore = () => {
+      log(
+        "🔍 Starting MutationObserver to detect chrome elements post-redirect"
+      );
+      const observer = new MutationObserver(() => {
+        const elements = document.querySelectorAll("header, nav, footer");
+        if (elements.length > 0) {
+          log(
+            "✅ Chrome elements detected after redirect:",
+            Array.from(elements).map((el) => el.tagName)
+          );
+          toggleGlobalChrome(false);
+          observer.disconnect();
+        }
+      });
 
-      requestAnimationFrame(() => attempt("rAF"));
-      setTimeout(() => attempt("t+300ms"), 300);
-      setTimeout(() => attempt("t+1s"), 1000);
-      setTimeout(() => attempt("t+2s"), 2000);
-      setTimeout(() => attempt("t+4s"), 4000);
+      observer.observe(document.body, { childList: true, subtree: true });
+
+      // fallback stops after 6 seconds
+      setTimeout(() => {
+        observer.disconnect();
+        log("⏹️ MutationObserver timeout reached (6s)");
+        toggleGlobalChrome(false);
+      }, 6000);
     };
 
-    debugLog("STATUS=success → scheduling redirect to:", redirectTarget);
-    const timer = setTimeout(() => {
-      debugLog("→ Redirecting now...");
+    log("STATUS=success → scheduling redirect to:", redirectTarget);
+    const t = setTimeout(() => {
+      log("→ Redirecting now...");
       router.replace(redirectTarget);
-      restoreAfterNewDOM();
-    }, 600);
+      observeAndRestore();
+    }, 500);
 
-    return () => clearTimeout(timer);
+    return () => clearTimeout(t);
   }, [status, router, redirectTarget]);
 
-  // ==========================================================================
-  // UI
-  // ==========================================================================
+  // --- UI ---
   const headline = "Verifying you are human. This may take a few seconds.";
   const subline = `${SITE_NAME.toLowerCase()} needs to review the security of your connection before proceeding.`;
 
@@ -221,7 +205,6 @@ export function VerifyClient() {
         <h1 className="text-4xl sm:text-5xl font-semibold text-gray-800">
           {SITE_NAME.toLowerCase()}
         </h1>
-
         <p className="mt-4 text-lg text-gray-800">{headline}</p>
 
         <div className="mt-8">
@@ -239,11 +222,11 @@ export function VerifyClient() {
                 execution="render"
                 onVerify={handleVerify}
                 onLoad={() => {
-                  debugLog("Turnstile loaded");
+                  log("Turnstile loaded");
                   setWidgetLoaded(true);
                 }}
                 onError={() => {
-                  debugLog("Turnstile error");
+                  log("Turnstile error");
                   downgradeToManual("Verification failed.");
                 }}
                 refreshExpired="auto"
