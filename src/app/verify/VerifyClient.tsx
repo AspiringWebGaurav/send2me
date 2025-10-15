@@ -2,22 +2,16 @@
 
 import dynamic from "next/dynamic";
 import { useRouter, useSearchParams } from "next/navigation";
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { BoundTurnstileObject } from "react-turnstile";
 
 const Turnstile = dynamic(
   () =>
     import("react-turnstile").then((mod) => {
       if ("Turnstile" in mod) {
-        return mod.Turnstile;
+        return mod.Turnstile as React.ComponentType<any>;
       }
-      return mod.default;
+      return mod.default as React.ComponentType<any>;
     }),
   { ssr: false },
 );
@@ -26,6 +20,7 @@ type VerificationMode = "auto" | "manual";
 
 const SITE_NAME = process.env.NEXT_PUBLIC_SITE_NAME ?? "Send2me";
 const AUTO_TRIGGER_DELAY_MS = 2000;
+const SUPPORT_EMAIL = "support@send2me.app";
 
 function generateRayId(): string {
   try {
@@ -40,51 +35,6 @@ function sanitizeRedirectTarget(target: string | null): string {
   if (!target.startsWith("/")) return "/";
   if (target.startsWith("//")) return "/";
   return target;
-}
-
-async function collectUserAgentData(): Promise<Record<string, unknown> | null> {
-  if (typeof navigator === "undefined" || !(navigator as Navigator & { userAgentData?: unknown }).userAgentData) {
-    return null;
-  }
-
-  try {
-    const uaData = (navigator as Navigator & {
-      userAgentData: {
-        brands?: Array<{ brand: string; version: string }>;
-        mobile?: boolean;
-        platform?: string;
-        getHighEntropyValues?: (
-          hints: Array<
-            "architecture" | "model" | "platform" | "platformVersion" | "uaFullVersion" | "bitness"
-          >,
-        ) => Promise<Record<string, string>>;
-      };
-    }).userAgentData;
-
-    const highEntropy =
-      uaData.getHighEntropyValues &&
-      (await uaData.getHighEntropyValues([
-        "architecture",
-        "model",
-        "platform",
-        "platformVersion",
-        "uaFullVersion",
-        "bitness",
-      ]));
-
-    return {
-      brands: uaData.brands ?? null,
-      mobile: uaData.mobile ?? null,
-      platform: highEntropy?.platform ?? uaData.platform ?? null,
-      platformVersion: highEntropy?.platformVersion ?? null,
-      architecture: highEntropy?.architecture ?? null,
-      model: highEntropy?.model ?? null,
-      uaFullVersion: highEntropy?.uaFullVersion ?? null,
-      bitness: highEntropy?.bitness ?? null,
-    };
-  } catch {
-    return null;
-  }
 }
 
 export function VerifyClient() {
@@ -106,18 +56,27 @@ export function VerifyClient() {
   const siteKey = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY;
 
   useEffect(() => {
+    try {
+      window.sessionStorage.removeItem("turnstile-verified");
+    } catch {
+      // Ignore storage access issues.
+    }
+  }, []);
+
+  useEffect(() => {
     document.body.classList.add("chrome-hidden");
     return () => {
       document.body.classList.remove("chrome-hidden");
     };
   }, []);
 
-  const downgradeToManual = useCallback((message?: string) => {
-    setStatus("error");
-    setErrorMessage(
-      message ?? "Automatic verification failed. Please complete the challenge below.",
-    );
-    setMode("manual");
+  useEffect(() => {
+    if (!rayId) {
+      setRayId(generateRayId());
+    }
+  }, [rayId]);
+
+  const resetWidget = useCallback(() => {
     setAutoTriggerArmed(false);
     if (autoTriggerTimeoutRef.current) {
       window.clearTimeout(autoTriggerTimeoutRef.current);
@@ -128,11 +87,32 @@ export function VerifyClient() {
     setWidgetKey((prev) => prev + 1);
   }, []);
 
-  useEffect(() => {
-    if (!rayId) {
-      setRayId(generateRayId());
+  const downgradeToManual = useCallback(
+    (message?: string) => {
+      setStatus("error");
+      setErrorMessage(message ?? "Verification failed. Please try again.");
+      setMode("manual");
+      try {
+        window.sessionStorage.removeItem("turnstile-verified");
+      } catch {
+        // Ignore storage access issues.
+      }
+      resetWidget();
+    },
+    [resetWidget],
+  );
+
+  const handleRetry = useCallback(() => {
+    setStatus("idle");
+    setErrorMessage(null);
+    setMode("manual");
+    try {
+      window.sessionStorage.removeItem("turnstile-verified");
+    } catch {
+      // Ignore storage access issues.
     }
-  }, [rayId]);
+    resetWidget();
+  }, [resetWidget]);
 
   useEffect(() => {
     if (mode !== "auto") {
@@ -178,44 +158,45 @@ export function VerifyClient() {
       setErrorMessage(null);
 
       try {
-        const userAgentData = await collectUserAgentData();
         const response = await fetch("/api/verify", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
           },
-          body: JSON.stringify({
-            token,
-            rayId: rayId ?? "pending-ray",
-            userAgentData: userAgentData ?? undefined,
-          }),
+          body: JSON.stringify({ token }),
           cache: "no-store",
           credentials: "same-origin",
         });
 
         const payload: unknown = await response
           .json()
-          .catch(() => ({ ok: false, error: "Verification failed. Please try again." }));
+          .catch(() => ({ ok: false, error: "Verification failed" }));
 
-        const ok = Boolean((payload as { ok?: unknown })?.ok);
+        const ok = Boolean((payload as { ok?: unknown })?.ok === true);
+
         if (!response.ok || !ok) {
           const message =
             typeof (payload as { error?: unknown })?.error === "string"
               ? ((payload as { error?: unknown }).error as string)
-              : "Verification failed. Please try again.";
+              : "Verification failed";
           throw new Error(message);
         }
 
+        try {
+          window.sessionStorage.setItem("turnstile-verified", "1");
+        } catch {
+          // sessionStorage may be unavailable; ignore.
+        }
         setStatus("success");
       } catch (error) {
         const message =
           error instanceof Error && error.message
             ? error.message
-            : "Verification failed. Please try again.";
+            : "Verification failed";
         downgradeToManual(message);
       }
     },
-    [rayId, downgradeToManual],
+    [downgradeToManual],
   );
 
   const handleLoad = useCallback(
@@ -230,7 +211,7 @@ export function VerifyClient() {
 
   const handleError = useCallback(
     (_error?: unknown) => {
-      downgradeToManual("Automatic verification failed. Please complete the challenge below.");
+      downgradeToManual("Verification failed. Please complete the challenge below.");
     },
     [downgradeToManual],
   );
@@ -319,6 +300,25 @@ export function VerifyClient() {
             </div>
           )}
         </div>
+
+        {status === "error" ? (
+          <div className="mt-8 w-full rounded-md border border-slate-200 bg-slate-50 p-4 text-left">
+            <p className="text-sm text-slate-600">
+              Verification failed. You can retry the challenge or contact{" "}
+              <a className="font-medium text-blue-600 underline" href={`mailto:${SUPPORT_EMAIL}`}>
+                {SUPPORT_EMAIL}
+              </a>{" "}
+              for help.
+            </p>
+            <button
+              type="button"
+              onClick={handleRetry}
+              className="mt-4 inline-flex items-center justify-center rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+            >
+              Retry verification
+            </button>
+          </div>
+        ) : null}
 
         {rayId ? (
           <div className="mt-8 border-t border-gray-200 pt-4">

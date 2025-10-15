@@ -1,3 +1,9 @@
+// src/app/verify/page.tsx
+
+export const runtime = "edge";
+export const dynamic = "force-static";
+export const revalidate = false;
+
 import type { Metadata } from "next";
 import { Suspense } from "react";
 import { VerifyClient } from "./VerifyClient";
@@ -9,8 +15,6 @@ export const metadata: Metadata = {
     follow: false,
   },
 };
-
-export const dynamic = "force-dynamic";
 
 export default function VerifyPage() {
   return (
