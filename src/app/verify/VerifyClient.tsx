@@ -5,56 +5,22 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { BoundTurnstileObject } from "react-turnstile";
 
-const Turnstile = dynamic<React.ComponentType<any>>(
-  async () => {
-    const mod: any = await import("react-turnstile");
-    return (mod?.Turnstile ?? mod?.default) as React.ComponentType<any>;
-  },
-  { ssr: false }
+const Turnstile = dynamic(
+  () =>
+    import("react-turnstile").then((mod) => {
+      if ("Turnstile" in mod) {
+        return mod.Turnstile;
+      }
+      return mod.default;
+    }),
+  { ssr: false },
 );
 
+type VerificationMode = "auto" | "manual";
+
 const SITE_NAME = process.env.NEXT_PUBLIC_SITE_NAME ?? "Send2me";
+const AUTO_TRIGGER_DELAY_MS = 2000;
 const SUPPORT_EMAIL = "support@send2me.app";
-const IS_PROD = process.env.NODE_ENV === "production";
-
-function log(...args: any[]) {
-  console.log(`[VerifyClient ${IS_PROD ? "PROD" : "DEV"} @ ${new Date().toISOString()}]`, ...args);
-}
-
-let hiddenElements: HTMLElement[] = [];
-
-function hideGlobalChrome() {
-  const tags = ["header", "nav", "footer"];
-  hiddenElements = [];
-  tags.forEach((tag) => {
-    document.querySelectorAll<HTMLElement>(tag).forEach((el) => {
-      if (el.style.display !== "none") {
-        el.dataset.prevDisplay = el.style.display;
-        el.style.display = "none";
-        hiddenElements.push(el);
-      }
-    });
-  });
-  document.body.style.overflow = "hidden";
-  log("→ Hiding chrome", hiddenElements.length);
-}
-
-function restoreGlobalChrome() {
-  if (hiddenElements.length === 0) {
-    // fallback scan if we lost the references
-    document.querySelectorAll<HTMLElement>("header, nav, footer").forEach((el) => (el.style.display = ""));
-    document.body.style.overflow = "";
-    log("→ Fallback restore scan");
-    return;
-  }
-  hiddenElements.forEach((el) => {
-    el.style.display = el.dataset.prevDisplay || "";
-    delete el.dataset.prevDisplay;
-  });
-  document.body.style.overflow = "";
-  log("→ Restored chrome", hiddenElements.length);
-  hiddenElements = [];
-}
 
 function generateRayId(): string {
   try {
@@ -65,186 +31,300 @@ function generateRayId(): string {
 }
 
 function sanitizeRedirectTarget(target: string | null): string {
-  if (!target || !target.startsWith("/") || target.startsWith("//")) return "/";
+  if (!target) return "/";
+  if (!target.startsWith("/")) return "/";
+  if (target.startsWith("//")) return "/";
   return target;
 }
 
 export function VerifyClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const redirectTarget = useMemo(
-    () => sanitizeRedirectTarget(searchParams?.get("redirectTo") ?? null),
-    [searchParams]
-  );
+  const redirectParam = searchParams?.get("redirectTo") ?? null;
+  const redirectTarget = useMemo(() => sanitizeRedirectTarget(redirectParam), [redirectParam]);
 
   const [rayId, setRayId] = useState<string | null>(null);
+  const [mode, setMode] = useState<VerificationMode>("auto");
   const [status, setStatus] = useState<"idle" | "verifying" | "success" | "error">("idle");
-  const [mode, setMode] = useState<"auto" | "manual">("auto");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [autoTriggerArmed, setAutoTriggerArmed] = useState(false);
   const [widgetKey, setWidgetKey] = useState(0);
-  const [widgetLoaded, setWidgetLoaded] = useState(false);
+
   const boundRef = useRef<BoundTurnstileObject | null>(null);
+  const autoTriggerTimeoutRef = useRef<number | null>(null);
+
   const siteKey = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY;
 
   useEffect(() => {
-    log("MOUNT: hiding chrome");
-    hideGlobalChrome();
+    try {
+      window.sessionStorage.removeItem("turnstile-verified");
+    } catch {
+      // Ignore storage access issues.
+    }
+  }, []);
+
+  useEffect(() => {
+    document.body.classList.add("chrome-hidden");
     return () => {
-      log("UNMOUNT: restoring chrome");
-      restoreGlobalChrome();
+      document.body.classList.remove("chrome-hidden");
     };
   }, []);
 
   useEffect(() => {
     if (!rayId) {
-      const id = generateRayId();
-      setRayId(id);
-      log("Generated Ray ID:", id);
+      setRayId(generateRayId());
     }
   }, [rayId]);
 
   const resetWidget = useCallback(() => {
-    boundRef.current?.reset?.();
+    setAutoTriggerArmed(false);
+    if (autoTriggerTimeoutRef.current) {
+      window.clearTimeout(autoTriggerTimeoutRef.current);
+      autoTriggerTimeoutRef.current = null;
+    }
+    boundRef.current?.reset();
     boundRef.current = null;
-    setWidgetKey((x) => x + 1);
-    setWidgetLoaded(false);
+    setWidgetKey((prev) => prev + 1);
   }, []);
 
   const downgradeToManual = useCallback(
-    (msg?: string) => {
-      log("Downgrade to manual:", msg);
+    (message?: string) => {
       setStatus("error");
-      setErrorMessage(msg ?? "Verification failed. Please try again.");
+      setErrorMessage(message ?? "Verification failed. Please try again.");
       setMode("manual");
+      try {
+        window.sessionStorage.removeItem("turnstile-verified");
+      } catch {
+        // Ignore storage access issues.
+      }
       resetWidget();
     },
-    [resetWidget]
+    [resetWidget],
   );
+
+  const handleRetry = useCallback(() => {
+    setStatus("idle");
+    setErrorMessage(null);
+    setMode("manual");
+    try {
+      window.sessionStorage.removeItem("turnstile-verified");
+    } catch {
+      // Ignore storage access issues.
+    }
+    resetWidget();
+  }, [resetWidget]);
+
+  useEffect(() => {
+    if (mode !== "auto") {
+      return;
+    }
+    if (autoTriggerTimeoutRef.current) {
+      window.clearTimeout(autoTriggerTimeoutRef.current);
+    }
+
+    autoTriggerTimeoutRef.current = window.setTimeout(() => {
+      setAutoTriggerArmed(true);
+    }, AUTO_TRIGGER_DELAY_MS);
+
+    return () => {
+      if (autoTriggerTimeoutRef.current) {
+        window.clearTimeout(autoTriggerTimeoutRef.current);
+        autoTriggerTimeoutRef.current = null;
+      }
+    };
+  }, [mode]);
+
+  useEffect(() => {
+    if (mode === "auto" && autoTriggerArmed && boundRef.current) {
+      boundRef.current.execute();
+    }
+  }, [mode, autoTriggerArmed]);
+
+  useEffect(() => {
+    if (status !== "success") return;
+    const timeout = window.setTimeout(() => {
+      router.replace(redirectTarget);
+    }, 600);
+
+    return () => {
+      window.clearTimeout(timeout);
+    };
+  }, [status, router, redirectTarget]);
 
   const handleVerify = useCallback(
     async (token: string) => {
       if (!token) return;
       setStatus("verifying");
-      log("Verification started", token.slice(0, 12) + "...");
+      setErrorMessage(null);
+
       try {
-        const r = await fetch("/api/verify", {
+        const response = await fetch("/api/verify", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+          },
           body: JSON.stringify({ token }),
+          cache: "no-store",
+          credentials: "same-origin",
         });
-        const data = await r.json().catch(() => ({ ok: false }));
-        if (!r.ok || !data.ok) throw new Error(data.error || "Verification failed");
-        sessionStorage.setItem("turnstile-verified", "1");
-        log("Verification success ✅");
+
+        const payload: unknown = await response
+          .json()
+          .catch(() => ({ ok: false, error: "Verification failed" }));
+
+        const ok = Boolean((payload as { ok?: unknown })?.ok === true);
+
+        if (!response.ok || !ok) {
+          const message =
+            typeof (payload as { error?: unknown })?.error === "string"
+              ? ((payload as { error?: unknown }).error as string)
+              : "Verification failed";
+          throw new Error(message);
+        }
+
+        try {
+          window.sessionStorage.setItem("turnstile-verified", "1");
+        } catch {
+          // sessionStorage may be unavailable; ignore.
+        }
         setStatus("success");
-      } catch (e) {
-        log("Verification error ❌", e);
-        downgradeToManual(e instanceof Error ? e.message : "Verification failed");
+      } catch (error) {
+        const message =
+          error instanceof Error && error.message
+            ? error.message
+            : "Verification failed";
+        downgradeToManual(message);
       }
     },
-    [downgradeToManual]
+    [downgradeToManual],
   );
 
-  useEffect(() => {
-    if (status !== "success") return;
-    log("STATUS=success → scheduling redirect to:", redirectTarget);
+  const handleLoad = useCallback(
+    (_widgetId: string, bound: BoundTurnstileObject) => {
+      boundRef.current = bound;
+      if (mode === "auto" && autoTriggerArmed) {
+        bound.execute();
+      }
+    },
+    [mode, autoTriggerArmed],
+  );
 
-    const t = setTimeout(() => {
-      log("→ Redirecting now...");
-      router.replace(redirectTarget);
-      // run restore repeatedly because layout may be persistent
-      const tries = [300, 800, 1500, 3000, 5000];
-      tries.forEach((ms) =>
-        setTimeout(() => {
-          log(`Restore attempt after ${ms}ms`);
-          restoreGlobalChrome();
-        }, ms)
-      );
-    }, 500);
-    return () => clearTimeout(t);
-  }, [status, router, redirectTarget]);
+  const handleError = useCallback(
+    (_error?: unknown) => {
+      downgradeToManual("Verification failed. Please complete the challenge below.");
+    },
+    [downgradeToManual],
+  );
 
-  const headline = "Verifying you are human. This may take a few seconds.";
-  const subline = `${SITE_NAME.toLowerCase()} needs to review the security of your connection before proceeding.`;
-  const helper =
-    status === "success"
-      ? "Success! Redirecting…"
-      : errorMessage
-      ? errorMessage
-      : mode === "manual"
-      ? "Please complete the Turnstile challenge to continue."
-      : status === "verifying"
-      ? "Verifying your connection…"
-      : "Checking your connection before granting access...";
+  const handleTimeout = useCallback(() => {
+    downgradeToManual("Verification timed out. Please complete the challenge below.");
+  }, [downgradeToManual]);
+
+  const handleExpire = useCallback(
+    () => downgradeToManual("Verification expired. Please refresh the challenge."),
+    [downgradeToManual],
+  );
+
+  const handleUnsupported = useCallback(
+    () => downgradeToManual("Your browser requires manual verification. Please check the box below."),
+    [downgradeToManual],
+  );
+
+  const supportingMessage = useMemo(() => {
+    if (status === "success") {
+      return "Success! Redirecting you to your destination...";
+    }
+    if (errorMessage) {
+      return errorMessage;
+    }
+    if (mode === "manual") {
+      return "Please complete the Turnstile challenge to continue.";
+    }
+    if (status === "verifying") {
+      return "Hang tight while we verify your browser...";
+    }
+    return "Checking your connection before granting access...";
+  }, [mode, status, errorMessage]);
+
+  const supportingToneClass = useMemo(() => {
+    if (status === "success") {
+      return "text-emerald-600";
+    }
+    if (errorMessage || status === "error") {
+      return "text-red-600";
+    }
+    if (status === "verifying") {
+      return "text-slate-600";
+    }
+    return "text-slate-500";
+  }, [status, errorMessage]);
 
   return (
-    <div className="fixed inset-0 z-[9999] flex min-h-screen flex-col items-center justify-center bg-white text-gray-900">
-      <div className="flex flex-col items-center px-4 text-center">
-        <h1 className="text-4xl sm:text-5xl font-semibold text-gray-800">{SITE_NAME.toLowerCase()}</h1>
-        <p className="mt-4 text-lg text-gray-800">{headline}</p>
+    <div className="fixed inset-0 flex min-h-screen items-center justify-center bg-gray-50 px-4">
+      <div className="w-full max-w-md rounded-lg border border-gray-200 bg-white p-8 text-center shadow-sm">
+        <div className="space-y-4">
+          <h1 className="text-xl font-medium text-slate-800">
+            Verifying your browser before accessing {SITE_NAME}...
+          </h1>
+          <p className="text-sm text-slate-500">
+            This process is automatic. Your browser will redirect to your requested content in a moment.
+          </p>
+          <div className="flex justify-center">
+            <span className="h-6 w-6 animate-spin rounded-full border-4 border-gray-300 border-t-blue-600" />
+          </div>
+          <p className={`text-sm ${supportingToneClass}`}>
+            {supportingMessage}
+          </p>
+        </div>
 
-        <div className="mt-8">
+        <div className="mt-8 flex flex-col items-center justify-center space-y-3">
           {siteKey ? (
-            <div className="flex flex-col items-center">
-              {!widgetLoaded && (
-                <div className="flex items-center justify-center mb-4">
-                  <span className="h-6 w-6 animate-spin rounded-full border-4 border-gray-300 border-t-green-600" />
-                </div>
-              )}
-              <Turnstile
-                key={widgetKey}
-                sitekey={siteKey}
-                appearance="always"
-                execution="render"
-                onVerify={handleVerify}
-                onLoad={() => {
-                  log("Turnstile loaded");
-                  setWidgetLoaded(true);
-                }}
-                onError={() => {
-                  log("Turnstile error");
-                  downgradeToManual("Verification failed.");
-                }}
-                refreshExpired="auto"
-                retry="auto"
-              />
-              <p className="mt-3 text-xs text-gray-500 text-center">{helper}</p>
-            </div>
+            <Turnstile
+              key={widgetKey}
+              sitekey={siteKey}
+              appearance={mode === "auto" ? "execute" : "always"}
+              execution={mode === "auto" ? "execute" : "render"}
+              {...(mode === "manual" ? { size: "normal" as const } : {})}
+              onVerify={handleVerify}
+              onLoad={handleLoad}
+              onTimeout={handleTimeout}
+              onError={handleError}
+              onExpire={handleExpire}
+              onUnsupported={handleUnsupported}
+              refreshExpired="auto"
+              retry="auto"
+            />
           ) : (
-            <div className="mt-6 text-center text-sm font-medium text-red-600 bg-red-50 border border-red-200 px-4 py-2 rounded">
-              Cloudflare Turnstile site key missing. Contact {SUPPORT_EMAIL}.
+            <div className="w-full rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-600">
+              Cloudflare Turnstile site key missing. Please contact the site owner.
             </div>
           )}
         </div>
 
-        {status === "error" && (
-          <div className="mt-6 text-sm text-gray-700 bg-gray-50 border border-gray-200 p-3 rounded-md max-w-sm">
-            Verification failed. Retry or contact{" "}
-            <a href={`mailto:${SUPPORT_EMAIL}`} className="text-blue-600 underline">
-              {SUPPORT_EMAIL}
-            </a>
-            .
+        {status === "error" ? (
+          <div className="mt-8 w-full rounded-md border border-slate-200 bg-slate-50 p-4 text-left">
+            <p className="text-sm text-slate-600">
+              Verification failed. You can retry the challenge or contact{" "}
+              <a className="font-medium text-blue-600 underline" href={`mailto:${SUPPORT_EMAIL}`}>
+                {SUPPORT_EMAIL}
+              </a>{" "}
+              for help.
+            </p>
             <button
-              onClick={() => {
-                setStatus("idle");
-                setErrorMessage(null);
-                setMode("manual");
-                resetWidget();
-              }}
-              className="mt-3 bg-blue-600 text-white text-xs font-medium px-3 py-1.5 rounded hover:bg-blue-700"
+              type="button"
+              onClick={handleRetry}
+              className="mt-4 inline-flex items-center justify-center rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
             >
-              Retry
+              Retry verification
             </button>
           </div>
-        )}
+        ) : null}
 
-        <p className="mt-10 text-base text-gray-800">{subline}</p>
-      </div>
-
-      <div className="mt-16 border-t border-gray-200 w-full text-center py-4 text-xs text-gray-500">
-        Ray ID: {rayId ?? "—"} <br />
-        Performance &amp; security by{" "}
-        <span className="text-blue-500">Cloudflare</span>
+        {rayId ? (
+          <div className="mt-8 border-t border-gray-200 pt-4">
+            <p className="text-xs text-slate-400">Ray ID: {rayId}</p>
+          </div>
+        ) : null}
       </div>
     </div>
   );
