@@ -149,18 +149,21 @@ export function VerifyClient() {
 
   useEffect(() => {
     if (status !== "success") return;
-    
-    // Ensure chrome is visible before navigation
-    setChromeHidden(false);
-    
-    const timeout = window.setTimeout(() => {
-      router.replace(redirectTarget);
-    }, 600);
 
-    return () => {
-      window.clearTimeout(timeout);
-    };
-  }, [status, router, redirectTarget, setChromeHidden]);
+    // Ensure chrome is visible immediately
+    setChromeHidden(false);
+
+    // Set a flag in sessionStorage to indicate successful verification
+    try {
+      window.sessionStorage.setItem("verification-complete", "true");
+    } catch {
+      // Ignore storage access issues
+    }
+
+    // Force a hard redirect instead of using Next.js router to ensure a fresh page load
+    const redirectUrl = redirectTarget || "/";
+    window.location.href = redirectUrl;
+  }, [status, redirectTarget, setChromeHidden]);
 
   const handleVerify = useCallback(
     async (token: string) => {

@@ -7,17 +7,24 @@ interface ChromeVisibilityContextType {
   isChromeHidden: boolean;
 }
 
-const ChromeVisibilityContext = createContext<ChromeVisibilityContextType | null>(null);
+const ChromeVisibilityContext =
+  createContext<ChromeVisibilityContextType | null>(null);
 
 export function useChromeVisibility() {
   const context = useContext(ChromeVisibilityContext);
   if (!context) {
-    throw new Error("useChromeVisibility must be used within a ChromeVisibilityProvider");
+    throw new Error(
+      "useChromeVisibility must be used within a ChromeVisibilityProvider"
+    );
   }
   return context;
 }
 
-export function ChromeVisibilityProvider({ children }: { children: React.ReactNode }) {
+export function ChromeVisibilityProvider({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   const [isChromeHidden, setIsChromeHidden] = useState(false);
 
   useEffect(() => {
@@ -35,7 +42,9 @@ export function ChromeVisibilityProvider({ children }: { children: React.ReactNo
   };
 
   return (
-    <ChromeVisibilityContext.Provider value={{ isChromeHidden, setChromeHidden }}>
+    <ChromeVisibilityContext.Provider
+      value={{ isChromeHidden, setChromeHidden }}
+    >
       {children}
     </ChromeVisibilityContext.Provider>
   );

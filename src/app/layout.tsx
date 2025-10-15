@@ -81,7 +81,21 @@ export default function RootLayout({
             (function () {
               var COOKIE_NAME = "verified";
               var SESSION_KEY = "turnstile-verified";
+              var VERIFICATION_COMPLETE = "verification-complete";
+              
               try {
+                // Check if we just completed verification
+                var justVerified = false;
+                try {
+                  justVerified = window.sessionStorage.getItem(VERIFICATION_COMPLETE) === "true";
+                  if (justVerified) {
+                    window.sessionStorage.removeItem(VERIFICATION_COMPLETE);
+                  }
+                } catch (verifyError) {
+                  // Ignore storage access issues
+                }
+
+                // Normal cookie check
                 var entries = document.cookie ? document.cookie.split(";") : [];
                 var hasCookie = false;
                 for (var i = 0; i < entries.length; i += 1) {
@@ -94,9 +108,9 @@ export default function RootLayout({
 
                 var hasSession = false;
                 try {
-                  hasSession = window.sessionStorage.getItem(SESSION_KEY) === "1";
+                  hasSession = window.sessionStorage.getItem(SESSION_KEY) === "1" || justVerified;
                 } catch (sessionError) {
-                  hasSession = false;
+                  hasSession = justVerified;
                 }
 
                 if (hasCookie && !hasSession) {
