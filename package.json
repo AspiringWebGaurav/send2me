@@ -3,10 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "node scripts/dev-warm.js",
-    "lint": "next lint",
+    "dev": "next dev",
     "build": "next build",
-    "start": "next start"
+    "start": "next start",
+    "lint": "eslint"
   },
   "dependencies": {
     "@heroicons/react": "2.1.5",

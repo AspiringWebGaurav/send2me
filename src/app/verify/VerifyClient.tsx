@@ -9,9 +9,9 @@ const Turnstile = dynamic(
   () =>
     import("react-turnstile").then((mod) => {
       if ("Turnstile" in mod) {
-        return mod.Turnstile as React.ComponentType<any>;
+        return mod.Turnstile;
       }
-      return mod.default as React.ComponentType<any>;
+      return mod.default;
     }),
   { ssr: false },
 );

@@ -1,7 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
-import { cookies, headers } from "next/headers";
-import { redirect } from "next/navigation";
+import { headers } from "next/headers";
 import Script from "next/script";
 import { Suspense } from "react";
 import "@/styles/theme.css";
@@ -13,50 +12,6 @@ import { resolvePublicBaseUrl } from "@/lib/publicUrl";
 import { RouteLoader } from "@/components/RouteLoader";
 import { FullScreenLoader } from "@/components/ui/FullScreenLoader";
 import { TurnstileVerificationProvider } from "@/components/turnstile/TurnstileProvider";
-
-const VERIFIED_COOKIE_NAME = "verified";
-
-const PUBLIC_PATHS = new Set<string>([
-  "/verify",
-  "/favicon.ico",
-  "/robots.txt",
-  "/sitemap.xml",
-  "/manifest.webmanifest",
-  "/dummy-user.png",
-]);
-
-const STATIC_FILE_PATTERN = /\.[^/]+$/;
-
-// ⬇️ central base URL
-const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000";
-
-function shouldBypassPath(pathname: string): boolean {
-  if (PUBLIC_PATHS.has(pathname)) return true;
-  if (pathname.startsWith("/_next")) return true;
-  if (pathname.startsWith("/api")) return true;
-  if (STATIC_FILE_PATTERN.test(pathname)) return true;
-  return false;
-}
-
-function sanitizeRedirectTarget(target: string | null): string {
-  if (!target) return "/";
-
-  let path = target;
-
-  try {
-    // ✅ dynamic base URL instead of hardcoded localhost
-    const parsed = new URL(target, BASE_URL);
-    path = `${parsed.pathname}${parsed.search}`;
-  } catch {
-    // target was likely a relative path; use as-is.
-  }
-
-  if (!path.startsWith("/")) return "/";
-  if (path.startsWith("//")) return "/";
-  if (path.startsWith("/verify")) return "/verify";
-
-  return path || "/";
-}
 
 const inter = Inter({
   subsets: ["latin"],
@@ -72,7 +27,9 @@ export const metadata: Metadata = {
   },
   description:
     "Claim your Send2me link, collect anonymous feedback, and keep your inbox clean with built-in moderation and rate limiting.",
-  icons: { icon: "/favicon.ico" },
+  icons: {
+    icon: "/favicon.ico",
+  },
   openGraph: {
     title: "Send2me - Anonymous & Safe Messaging",
     description:
@@ -113,16 +70,12 @@ export default function RootLayout({
     headerList.get("x-matched-path") ??
     headerList.get("next-url") ??
     "";
-  const shouldHideChrome =
-    invokedPath === "/verify" || invokedPath.startsWith("/verify/");
+  const shouldHideChrome = invokedPath === "/verify" || invokedPath.startsWith("/verify/");
 
   return (
     <html lang="en" className={inter.variable}>
       <body className="bg-white text-slate-900 antialiased">
-        <Script
-          id="verification-session-bootstrap"
-          strategy="beforeInteractive"
-        >
+        <Script id="verification-session-bootstrap" strategy="beforeInteractive">
           {`
             (function () {
               var COOKIE_NAME = "verified";
@@ -149,7 +102,9 @@ export default function RootLayout({
                   document.cookie = COOKIE_NAME + "=; Max-Age=0; Path=/";
                   try {
                     window.sessionStorage.removeItem(SESSION_KEY);
-                  } catch (removeError) {}
+                  } catch (removeError) {
+                    // ignore
+                  }
                   var currentPath = window.location.pathname + window.location.search;
                   if (!currentPath.startsWith("/verify")) {
                     var redirectTarget = currentPath || "/";
@@ -161,7 +116,9 @@ export default function RootLayout({
                 if (!hasCookie && hasSession) {
                   try {
                     window.sessionStorage.removeItem(SESSION_KEY);
-                  } catch (clearError) {}
+                  } catch (clearError) {
+                    // ignore
+                  }
                 }
               } catch (error) {
                 if (typeof console !== "undefined" && console.error) {

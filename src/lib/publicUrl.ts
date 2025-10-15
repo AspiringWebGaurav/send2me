@@ -1,10 +1,3 @@
-// src/lib/publicUrl.ts
-
-/**
- * Utility for resolving the correct public base URL across
- * local, preview, and production environments.
- */
-
 const FALLBACK_BASE_URL = "https://send2me.vercel.app";
 
 const LOCAL_HOSTNAMES = new Set([
@@ -16,20 +9,15 @@ const LOCAL_HOSTNAMES = new Set([
 ]);
 
 function ensureProtocol(raw: string): string {
-  const trimmed = raw.trim();
+  const trimmed = raw.replace(/^\s+|\s+$/g, "");
   if (!trimmed) return trimmed;
-
-  // If already has a protocol (http://, https://, etc.)
   if (/^[a-zA-Z][a-zA-Z\d+\-.]*:\/\//.test(trimmed)) {
     return trimmed;
   }
-
-  // Handle protocol-relative URLs (e.g., //domain.com)
+  // Handle protocol-relative URLs.
   if (trimmed.startsWith("//")) {
     return `https:${trimmed}`;
   }
-
-  // Default to https if missing
   return `https://${trimmed}`;
 }
 
@@ -37,7 +25,6 @@ export function normalizeBaseUrl(raw?: string | null): string | null {
   if (!raw) return null;
   const withProtocol = ensureProtocol(raw);
   if (!withProtocol) return null;
-
   try {
     const url = new URL(withProtocol);
     return url.origin;
@@ -73,21 +60,18 @@ export function resolvePublicBaseUrl(
 
   const candidates: Array<{ value?: string | null; allowLocal: boolean }> = [
     { value: preferred, allowLocal },
-
-    // ✅ unified and consistent env vars
-    { value: process.env.NEXT_PUBLIC_BASE_URL, allowLocal: false },
     { value: process.env.NEXT_PUBLIC_PUBLIC_BASE_URL, allowLocal: false },
     { value: process.env.NEXT_PUBLIC_APP_URL, allowLocal: false },
-    { value: process.env.SITE_URL, allowLocal: false },
     { value: process.env.VERCEL_URL, allowLocal: false },
-
     { value: FALLBACK_BASE_URL, allowLocal: true },
   ];
 
   for (const candidate of candidates) {
     const normalized = normalizeBaseUrl(candidate.value);
     if (!normalized) continue;
-    if (!candidate.allowLocal && isProbablyLocalBaseUrl(normalized)) continue;
+    if (!candidate.allowLocal && isProbablyLocalBaseUrl(normalized)) {
+      continue;
+    }
     return normalized;
   }
 
@@ -95,7 +79,7 @@ export function resolvePublicBaseUrl(
 }
 
 export function getBaseUrlMeta() {
-  const envNormalized = normalizeBaseUrl(process.env.NEXT_PUBLIC_BASE_URL);
+  const envNormalized = normalizeBaseUrl(process.env.NEXT_PUBLIC_PUBLIC_BASE_URL);
   const envIsReliable =
     !!envNormalized && !isProbablyLocalBaseUrl(envNormalized);
 
@@ -113,11 +97,9 @@ export function buildProfileUrl(base: string, username: string): string {
   const normalizedBase =
     normalizeBaseUrl(base) ??
     resolvePublicBaseUrl(undefined, { allowLocal: true });
-
   const trimmedBase = normalizedBase.endsWith("/")
     ? normalizedBase.slice(0, -1)
     : normalizedBase;
-
   const safeUsername = encodeURIComponent(username.trim());
   return `${trimmedBase}/u/${safeUsername}`;
 }
