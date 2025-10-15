@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { BoundTurnstileObject } from "react-turnstile";
 
+// Dynamic import
 const Turnstile = dynamic<React.ComponentType<any>>(
   async () => {
     const mod: any = await import("react-turnstile");
@@ -16,12 +17,20 @@ const Turnstile = dynamic<React.ComponentType<any>>(
 type VerificationMode = "auto" | "manual";
 const SITE_NAME = process.env.NEXT_PUBLIC_SITE_NAME ?? "Send2me";
 const SUPPORT_EMAIL = "support@send2me.app";
+const IS_PROD = process.env.NODE_ENV === "production";
 
-const isDev = process.env.NODE_ENV === "development";
-function devLog(...args: any[]) {
-  if (isDev) console.log("[VerifyClient DEBUG]:", ...args);
+// ==========================================================================
+// 🔍 Production-aware logger
+// ==========================================================================
+function debugLog(...args: any[]) {
+  const time = new Date().toISOString();
+  const env = IS_PROD ? "PROD" : "DEV";
+  console.log(`[VerifyClient ${env} @ ${time}]`, ...args);
 }
 
+// ==========================================================================
+// Helpers
+// ==========================================================================
 function generateRayId(): string {
   try {
     return crypto.randomUUID().replace(/-/g, "").slice(0, 8);
@@ -35,9 +44,16 @@ function sanitizeRedirectTarget(target: string | null): string {
   return target;
 }
 
+// ==========================================================================
+// DOM manipulation
+// ==========================================================================
 function toggleGlobalChrome(hide: boolean) {
-  const elements = document.querySelectorAll<HTMLElement>("header, nav, footer");
-  devLog(hide ? "Hiding chrome" : "Restoring chrome", elements.length);
+  const elements = document.querySelectorAll<HTMLElement>(
+    "header, nav, footer"
+  );
+  debugLog(hide ? "→ Hiding chrome" : "→ Restoring chrome", elements.length, {
+    elements: Array.from(elements).map((el) => el.tagName),
+  });
 
   if (hide) {
     document.body.style.overflow = "hidden";
@@ -48,6 +64,9 @@ function toggleGlobalChrome(hide: boolean) {
   }
 }
 
+// ==========================================================================
+// Component
+// ==========================================================================
 export function VerifyClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -59,20 +78,23 @@ export function VerifyClient() {
 
   const [rayId, setRayId] = useState<string | null>(null);
   const [mode, setMode] = useState<VerificationMode>("auto");
-  const [status, setStatus] = useState<"idle" | "verifying" | "success" | "error">("idle");
+  const [status, setStatus] = useState<
+    "idle" | "verifying" | "success" | "error"
+  >("idle");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [widgetKey, setWidgetKey] = useState(0);
   const [widgetLoaded, setWidgetLoaded] = useState(false);
-
   const boundRef = useRef<BoundTurnstileObject | null>(null);
   const siteKey = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY;
 
-  // Hide navbar/footer while verifying
+  // ==========================================================================
+  // Mount/unmount
+  // ==========================================================================
   useEffect(() => {
-    devLog("Mounted – hide chrome");
+    debugLog("MOUNT: hiding chrome");
     toggleGlobalChrome(true);
     return () => {
-      devLog("Unmount – restore chrome");
+      debugLog("UNMOUNT: restoring chrome");
       toggleGlobalChrome(false);
     };
   }, []);
@@ -86,13 +108,13 @@ export function VerifyClient() {
   useEffect(() => {
     if (!rayId) {
       const id = generateRayId();
-      devLog("Ray ID:", id);
+      debugLog("Generated Ray ID:", id);
       setRayId(id);
     }
   }, [rayId]);
 
   const resetWidget = useCallback(() => {
-    devLog("Reset widget");
+    debugLog("Resetting Turnstile widget");
     boundRef.current?.reset?.();
     boundRef.current = null;
     setWidgetKey((prev) => prev + 1);
@@ -101,7 +123,7 @@ export function VerifyClient() {
 
   const downgradeToManual = useCallback(
     (msg?: string) => {
-      devLog("Downgrade to manual:", msg);
+      debugLog("Downgrading to manual mode:", msg);
       setStatus("error");
       setErrorMessage(msg ?? "Verification failed. Please try again.");
       setMode("manual");
@@ -111,18 +133,21 @@ export function VerifyClient() {
   );
 
   const handleRetry = useCallback(() => {
-    devLog("Retry clicked");
+    debugLog("Manual retry clicked");
     setStatus("idle");
     setErrorMessage(null);
     setMode("manual");
     resetWidget();
   }, [resetWidget]);
 
+  // ==========================================================================
+  // Turnstile verification
+  // ==========================================================================
   const handleVerify = useCallback(
     async (token: string) => {
       if (!token) return;
       setStatus("verifying");
-      devLog("Verification started");
+      debugLog("Verification started → token:", token.slice(0, 12) + "...");
       try {
         const response = await fetch("/api/verify", {
           method: "POST",
@@ -134,10 +159,10 @@ export function VerifyClient() {
           throw new Error(payload.error || "Verification failed");
 
         sessionStorage.setItem("turnstile-verified", "1");
-        devLog("Verification success");
+        debugLog("Verification success ✅");
         setStatus("success");
       } catch (e) {
-        devLog("Verification error:", e);
+        debugLog("Verification error ❌", e);
         downgradeToManual(
           e instanceof Error ? e.message : "Verification failed"
         );
@@ -146,22 +171,28 @@ export function VerifyClient() {
     [downgradeToManual]
   );
 
-  // Final robust redirect + restore sequence
+  // ==========================================================================
+  // Redirect + restore sequence (production-observable)
+  // ==========================================================================
   useEffect(() => {
     if (status !== "success") return;
 
     const restoreAfterNewDOM = () => {
-      requestAnimationFrame(() => {
+      const attempt = (label: string) => {
+        debugLog(`Restore attempt: ${label}`);
         toggleGlobalChrome(false);
-        setTimeout(() => toggleGlobalChrome(false), 300);
-        setTimeout(() => toggleGlobalChrome(false), 1000);
-        setTimeout(() => toggleGlobalChrome(false), 2000);
-        devLog("Post-redirect restore triggered multiple times for safety");
-      });
+      };
+
+      requestAnimationFrame(() => attempt("rAF"));
+      setTimeout(() => attempt("t+300ms"), 300);
+      setTimeout(() => attempt("t+1s"), 1000);
+      setTimeout(() => attempt("t+2s"), 2000);
+      setTimeout(() => attempt("t+4s"), 4000);
     };
 
-    devLog("Scheduling redirect to:", redirectTarget);
+    debugLog("STATUS=success → scheduling redirect to:", redirectTarget);
     const timer = setTimeout(() => {
+      debugLog("→ Redirecting now...");
       router.replace(redirectTarget);
       restoreAfterNewDOM();
     }, 600);
@@ -169,13 +200,17 @@ export function VerifyClient() {
     return () => clearTimeout(timer);
   }, [status, router, redirectTarget]);
 
+  // ==========================================================================
+  // UI
+  // ==========================================================================
   const headline = "Verifying you are human. This may take a few seconds.";
   const subline = `${SITE_NAME.toLowerCase()} needs to review the security of your connection before proceeding.`;
 
   const helper = useMemo(() => {
     if (status === "success") return "Success! Redirecting…";
     if (errorMessage) return errorMessage;
-    if (mode === "manual") return "Please complete the Turnstile challenge to continue.";
+    if (mode === "manual")
+      return "Please complete the Turnstile challenge to continue.";
     if (status === "verifying") return "Verifying your connection…";
     return "Checking your connection before granting access...";
   }, [status, errorMessage, mode]);
@@ -204,11 +239,11 @@ export function VerifyClient() {
                 execution="render"
                 onVerify={handleVerify}
                 onLoad={() => {
-                  devLog("Turnstile loaded");
+                  debugLog("Turnstile loaded");
                   setWidgetLoaded(true);
                 }}
                 onError={() => {
-                  devLog("Turnstile error");
+                  debugLog("Turnstile error");
                   downgradeToManual("Verification failed.");
                 }}
                 refreshExpired="auto"
