@@ -17,7 +17,6 @@ const Turnstile = dynamic(
 type VerificationMode = "auto" | "manual";
 
 const SITE_NAME = process.env.NEXT_PUBLIC_SITE_NAME ?? "Send2me";
-const AUTO_TRIGGER_DELAY_MS = 2000;
 const SUPPORT_EMAIL = "support@send2me.app";
 
 function generateRayId(): string {
@@ -33,6 +32,22 @@ function sanitizeRedirectTarget(target: string | null): string {
   return target;
 }
 
+// ✅ helper to safely hide & restore global UI chrome (navbar/footer)
+function toggleGlobalChrome(hide: boolean) {
+  const navs = document.querySelectorAll("nav");
+  const footers = document.querySelectorAll("footer");
+
+  if (hide) {
+    document.body.style.overflow = "hidden";
+    navs.forEach((el) => (el.style.display = "none"));
+    footers.forEach((el) => (el.style.display = "none"));
+  } else {
+    document.body.style.overflow = "";
+    navs.forEach((el) => (el.style.display = ""));
+    footers.forEach((el) => (el.style.display = ""));
+  }
+}
+
 export function VerifyClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -44,9 +59,7 @@ export function VerifyClient() {
 
   const [rayId, setRayId] = useState<string | null>(null);
   const [mode, setMode] = useState<VerificationMode>("auto");
-  const [status, setStatus] = useState<
-    "idle" | "verifying" | "success" | "error"
-  >("idle");
+  const [status, setStatus] = useState<"idle" | "verifying" | "success" | "error">("idle");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [widgetKey, setWidgetKey] = useState(0);
   const [widgetLoaded, setWidgetLoaded] = useState(false);
@@ -54,26 +67,23 @@ export function VerifyClient() {
   const boundRef = useRef<BoundTurnstileObject | null>(null);
   const siteKey = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY;
 
+  // Hide global chrome immediately when verification page mounts
   useEffect(() => {
-    // Hide page chrome while verifying
-    document.body.style.overflow = "hidden";
-    const nav = document.querySelector("nav");
-    const footers = document.querySelectorAll("footer");
-    nav?.setAttribute("style", "display:none!important");
-    footers.forEach((f) => f.setAttribute("style", "display:none!important"));
+    toggleGlobalChrome(true);
     return () => {
-      document.body.style.overflow = "";
-      nav?.removeAttribute("style");
-      footers.forEach((f) => f.removeAttribute("style"));
+      // Always restore chrome even if user navigates away mid-verification
+      toggleGlobalChrome(false);
     };
   }, []);
 
+  // Reset verification session
   useEffect(() => {
     try {
       sessionStorage.removeItem("turnstile-verified");
     } catch {}
   }, []);
 
+  // Generate Ray ID
   useEffect(() => {
     if (!rayId) setRayId(generateRayId());
   }, [rayId]);
@@ -126,10 +136,16 @@ export function VerifyClient() {
     [downgradeToManual]
   );
 
+  // ✅ Robust restoration of navbar/footer before redirect
   useEffect(() => {
     if (status !== "success") return;
-    const t = setTimeout(() => router.replace(redirectTarget), 600);
-    return () => clearTimeout(t);
+    const timer = setTimeout(() => {
+      toggleGlobalChrome(false); // restore immediately before redirect
+      router.replace(redirectTarget);
+      // double-restore in case Next.js keeps old DOM nodes briefly
+      setTimeout(() => toggleGlobalChrome(false), 1500);
+    }, 600);
+    return () => clearTimeout(timer);
   }, [status, router, redirectTarget]);
 
   const headline = "Verifying you are human. This may take a few seconds.";
