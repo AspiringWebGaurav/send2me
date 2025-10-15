@@ -5,7 +5,6 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { BoundTurnstileObject } from "react-turnstile";
 
-// ✅ Properly typed dynamic import that returns a React component
 const Turnstile = dynamic<React.ComponentType<any>>(
   async () => {
     const mod: any = await import("react-turnstile");
@@ -15,9 +14,13 @@ const Turnstile = dynamic<React.ComponentType<any>>(
 );
 
 type VerificationMode = "auto" | "manual";
-
 const SITE_NAME = process.env.NEXT_PUBLIC_SITE_NAME ?? "Send2me";
 const SUPPORT_EMAIL = "support@send2me.app";
+
+const isDev = process.env.NODE_ENV === "development";
+function devLog(...args: any[]) {
+  if (isDev) console.log("[VerifyClient DEBUG]:", ...args);
+}
 
 function generateRayId(): string {
   try {
@@ -32,11 +35,10 @@ function sanitizeRedirectTarget(target: string | null): string {
   return target;
 }
 
-// ✅ Safely hide/restore ONLY actual layout chrome (header/nav/footer)
+// === robust hide/restore ===
 function toggleGlobalChrome(hide: boolean) {
-  const elements = document.querySelectorAll<HTMLElement>(
-    "header, nav, footer"
-  );
+  const elements = document.querySelectorAll<HTMLElement>("header, nav, footer");
+  devLog(hide ? "Hiding chrome" : "Restoring chrome", elements.length);
   if (hide) {
     document.body.style.overflow = "hidden";
     elements.forEach((el) => (el.style.display = "none"));
@@ -57,9 +59,7 @@ export function VerifyClient() {
 
   const [rayId, setRayId] = useState<string | null>(null);
   const [mode, setMode] = useState<VerificationMode>("auto");
-  const [status, setStatus] = useState<
-    "idle" | "verifying" | "success" | "error"
-  >("idle");
+  const [status, setStatus] = useState<"idle" | "verifying" | "success" | "error">("idle");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [widgetKey, setWidgetKey] = useState(0);
   const [widgetLoaded, setWidgetLoaded] = useState(false);
@@ -67,22 +67,40 @@ export function VerifyClient() {
   const boundRef = useRef<BoundTurnstileObject | null>(null);
   const siteKey = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY;
 
-  // Hide global chrome immediately when we mount
+  // hide on mount
   useEffect(() => {
+    devLog("Mounted – hide chrome");
     toggleGlobalChrome(true);
-    return () => toggleGlobalChrome(false);
-  }, []);
-
-  // Failsafe: if hydration/navigation timing leaves things hidden, re-show them
-  useEffect(() => {
-    const restore = () => toggleGlobalChrome(false);
-    window.addEventListener("pageshow", restore);
-    window.addEventListener("load", restore);
     return () => {
-      window.removeEventListener("pageshow", restore);
-      window.removeEventListener("load", restore);
+      devLog("Unmount – restore chrome");
+      toggleGlobalChrome(false);
     };
   }, []);
+
+  // failsafe restore on load
+  useEffect(() => {
+    const restore = () => toggleGlobalChrome(false);
+    window.addEventListener("load", restore);
+    window.addEventListener("pageshow", restore);
+    return () => {
+      window.removeEventListener("load", restore);
+      window.removeEventListener("pageshow", restore);
+    };
+  }, []);
+
+  // routecomplete restore (ensures new layout DOM is visible)
+  useEffect(() => {
+    const handleRouteDone = () => {
+      devLog("routechangecomplete – final restore");
+      toggleGlobalChrome(false);
+    };
+    // @ts-ignore router.events only on client router
+    router.events?.on?.("routeChangeComplete", handleRouteDone);
+    return () => {
+      // @ts-ignore
+      router.events?.off?.("routeChangeComplete", handleRouteDone);
+    };
+  }, [router]);
 
   useEffect(() => {
     try {
@@ -91,10 +109,15 @@ export function VerifyClient() {
   }, []);
 
   useEffect(() => {
-    if (!rayId) setRayId(generateRayId());
+    if (!rayId) {
+      const id = generateRayId();
+      devLog("Ray ID:", id);
+      setRayId(id);
+    }
   }, [rayId]);
 
   const resetWidget = useCallback(() => {
+    devLog("Reset widget");
     boundRef.current?.reset?.();
     boundRef.current = null;
     setWidgetKey((prev) => prev + 1);
@@ -103,6 +126,7 @@ export function VerifyClient() {
 
   const downgradeToManual = useCallback(
     (msg?: string) => {
+      devLog("Downgrade to manual:", msg);
       setStatus("error");
       setErrorMessage(msg ?? "Verification failed. Please try again.");
       setMode("manual");
@@ -112,6 +136,7 @@ export function VerifyClient() {
   );
 
   const handleRetry = useCallback(() => {
+    devLog("Retry clicked");
     setStatus("idle");
     setErrorMessage(null);
     setMode("manual");
@@ -122,6 +147,7 @@ export function VerifyClient() {
     async (token: string) => {
       if (!token) return;
       setStatus("verifying");
+      devLog("Verification started");
       try {
         const response = await fetch("/api/verify", {
           method: "POST",
@@ -132,23 +158,23 @@ export function VerifyClient() {
         if (!response.ok || !payload.ok)
           throw new Error(payload.error || "Verification failed");
         sessionStorage.setItem("turnstile-verified", "1");
+        devLog("Verification success");
         setStatus("success");
       } catch (e) {
-        downgradeToManual(
-          e instanceof Error ? e.message : "Verification failed"
-        );
+        devLog("Verification error:", e);
+        downgradeToManual(e instanceof Error ? e.message : "Verification failed");
       }
     },
     [downgradeToManual]
   );
 
-  // Restore chrome before redirect (with a second check after navigation)
   useEffect(() => {
     if (status !== "success") return;
+    devLog("Scheduling redirect to:", redirectTarget);
     const t = setTimeout(() => {
       toggleGlobalChrome(false);
       router.replace(redirectTarget);
-      setTimeout(() => toggleGlobalChrome(false), 1000);
+      setTimeout(() => toggleGlobalChrome(false), 1200);
     }, 600);
     return () => clearTimeout(t);
   }, [status, router, redirectTarget]);
@@ -159,8 +185,7 @@ export function VerifyClient() {
   const helper = useMemo(() => {
     if (status === "success") return "Success! Redirecting…";
     if (errorMessage) return errorMessage;
-    if (mode === "manual")
-      return "Please complete the Turnstile challenge to continue.";
+    if (mode === "manual") return "Please complete the Turnstile challenge to continue.";
     if (status === "verifying") return "Verifying your connection…";
     return "Checking your connection before granting access...";
   }, [status, errorMessage, mode]);
@@ -184,16 +209,21 @@ export function VerifyClient() {
               )}
               <Turnstile
                 key={widgetKey}
-                sitekey={siteKey} // ✅ correct lowercase prop name
+                sitekey={siteKey}
                 appearance="always"
                 execution="render"
                 onVerify={handleVerify}
-                onLoad={() => setWidgetLoaded(true)}
-                onError={() => downgradeToManual("Verification failed.")}
+                onLoad={() => {
+                  devLog("Turnstile loaded");
+                  setWidgetLoaded(true);
+                }}
+                onError={() => {
+                  devLog("Turnstile error");
+                  downgradeToManual("Verification failed.");
+                }}
                 refreshExpired="auto"
                 retry="auto"
               />
-
               <p className="mt-3 text-xs text-gray-500 text-center">{helper}</p>
             </div>
           ) : (
@@ -205,11 +235,8 @@ export function VerifyClient() {
 
         {status === "error" && (
           <div className="mt-6 text-sm text-gray-700 bg-gray-50 border border-gray-200 p-3 rounded-md max-w-sm">
-            Verification failed. Retry the challenge or contact{" "}
-            <a
-              href={`mailto:${SUPPORT_EMAIL}`}
-              className="text-blue-600 underline"
-            >
+            Verification failed. Retry or contact{" "}
+            <a href={`mailto:${SUPPORT_EMAIL}`} className="text-blue-600 underline">
               {SUPPORT_EMAIL}
             </a>
             .
@@ -227,8 +254,7 @@ export function VerifyClient() {
 
       <div className="mt-16 border-t border-gray-200 w-full text-center py-4 text-xs text-gray-500">
         Ray ID: {rayId ?? "—"} <br />
-        Performance &amp; security by{" "}
-        <span className="text-blue-500">Cloudflare</span>
+        Performance &amp; security by <span className="text-blue-500">Cloudflare</span>
       </div>
     </div>
   );
