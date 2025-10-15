@@ -5,12 +5,12 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { BoundTurnstileObject } from "react-turnstile";
 
-const Turnstile = dynamic(
-  () =>
-    import("react-turnstile").then((mod) => {
-      if ("Turnstile" in mod) return mod.Turnstile as React.ComponentType<any>;
-      return mod.default as React.ComponentType<any>;
-    }),
+// ✅ Properly typed dynamic import that returns a React component
+const Turnstile = dynamic<React.ComponentType<any>>(
+  async () => {
+    const mod: any = await import("react-turnstile");
+    return (mod?.Turnstile ?? mod?.default) as React.ComponentType<any>;
+  },
   { ssr: false }
 );
 
@@ -32,19 +32,17 @@ function sanitizeRedirectTarget(target: string | null): string {
   return target;
 }
 
-// ✅ helper to safely hide & restore global UI chrome (navbar/footer)
+// ✅ Safely hide/restore ONLY actual layout chrome (header/nav/footer)
 function toggleGlobalChrome(hide: boolean) {
-  const navs = document.querySelectorAll("nav");
-  const footers = document.querySelectorAll("footer");
-
+  const elements = document.querySelectorAll<HTMLElement>(
+    "header, nav, footer"
+  );
   if (hide) {
     document.body.style.overflow = "hidden";
-    navs.forEach((el) => (el.style.display = "none"));
-    footers.forEach((el) => (el.style.display = "none"));
+    elements.forEach((el) => (el.style.display = "none"));
   } else {
     document.body.style.overflow = "";
-    navs.forEach((el) => (el.style.display = ""));
-    footers.forEach((el) => (el.style.display = ""));
+    elements.forEach((el) => (el.style.display = ""));
   }
 }
 
@@ -59,7 +57,9 @@ export function VerifyClient() {
 
   const [rayId, setRayId] = useState<string | null>(null);
   const [mode, setMode] = useState<VerificationMode>("auto");
-  const [status, setStatus] = useState<"idle" | "verifying" | "success" | "error">("idle");
+  const [status, setStatus] = useState<
+    "idle" | "verifying" | "success" | "error"
+  >("idle");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [widgetKey, setWidgetKey] = useState(0);
   const [widgetLoaded, setWidgetLoaded] = useState(false);
@@ -67,29 +67,35 @@ export function VerifyClient() {
   const boundRef = useRef<BoundTurnstileObject | null>(null);
   const siteKey = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY;
 
-  // Hide global chrome immediately when verification page mounts
+  // Hide global chrome immediately when we mount
   useEffect(() => {
     toggleGlobalChrome(true);
+    return () => toggleGlobalChrome(false);
+  }, []);
+
+  // Failsafe: if hydration/navigation timing leaves things hidden, re-show them
+  useEffect(() => {
+    const restore = () => toggleGlobalChrome(false);
+    window.addEventListener("pageshow", restore);
+    window.addEventListener("load", restore);
     return () => {
-      // Always restore chrome even if user navigates away mid-verification
-      toggleGlobalChrome(false);
+      window.removeEventListener("pageshow", restore);
+      window.removeEventListener("load", restore);
     };
   }, []);
 
-  // Reset verification session
   useEffect(() => {
     try {
       sessionStorage.removeItem("turnstile-verified");
     } catch {}
   }, []);
 
-  // Generate Ray ID
   useEffect(() => {
     if (!rayId) setRayId(generateRayId());
   }, [rayId]);
 
   const resetWidget = useCallback(() => {
-    boundRef.current?.reset();
+    boundRef.current?.reset?.();
     boundRef.current = null;
     setWidgetKey((prev) => prev + 1);
     setWidgetLoaded(false);
@@ -136,16 +142,15 @@ export function VerifyClient() {
     [downgradeToManual]
   );
 
-  // ✅ Robust restoration of navbar/footer before redirect
+  // Restore chrome before redirect (with a second check after navigation)
   useEffect(() => {
     if (status !== "success") return;
-    const timer = setTimeout(() => {
-      toggleGlobalChrome(false); // restore immediately before redirect
+    const t = setTimeout(() => {
+      toggleGlobalChrome(false);
       router.replace(redirectTarget);
-      // double-restore in case Next.js keeps old DOM nodes briefly
-      setTimeout(() => toggleGlobalChrome(false), 1500);
+      setTimeout(() => toggleGlobalChrome(false), 1000);
     }, 600);
-    return () => clearTimeout(timer);
+    return () => clearTimeout(t);
   }, [status, router, redirectTarget]);
 
   const headline = "Verifying you are human. This may take a few seconds.";
@@ -163,15 +168,12 @@ export function VerifyClient() {
   return (
     <div className="fixed inset-0 z-[9999] flex min-h-screen flex-col items-center justify-center bg-white text-gray-900">
       <div className="flex flex-col items-center px-4 text-center">
-        {/* site name */}
         <h1 className="text-4xl sm:text-5xl font-semibold text-gray-800">
           {SITE_NAME.toLowerCase()}
         </h1>
 
-        {/* headline */}
         <p className="mt-4 text-lg text-gray-800">{headline}</p>
 
-        {/* Cloudflare Turnstile visible widget */}
         <div className="mt-8">
           {siteKey ? (
             <div className="flex flex-col items-center">
@@ -182,7 +184,7 @@ export function VerifyClient() {
               )}
               <Turnstile
                 key={widgetKey}
-                sitekey={siteKey}
+                sitekey={siteKey} // ✅ correct lowercase prop name
                 appearance="always"
                 execution="render"
                 onVerify={handleVerify}
@@ -191,6 +193,7 @@ export function VerifyClient() {
                 refreshExpired="auto"
                 retry="auto"
               />
+
               <p className="mt-3 text-xs text-gray-500 text-center">{helper}</p>
             </div>
           ) : (
@@ -200,7 +203,6 @@ export function VerifyClient() {
           )}
         </div>
 
-        {/* manual fallback */}
         {status === "error" && (
           <div className="mt-6 text-sm text-gray-700 bg-gray-50 border border-gray-200 p-3 rounded-md max-w-sm">
             Verification failed. Retry the challenge or contact{" "}
@@ -220,11 +222,9 @@ export function VerifyClient() {
           </div>
         )}
 
-        {/* subline */}
         <p className="mt-10 text-base text-gray-800">{subline}</p>
       </div>
 
-      {/* footer */}
       <div className="mt-16 border-t border-gray-200 w-full text-center py-4 text-xs text-gray-500">
         Ray ID: {rayId ?? "—"} <br />
         Performance &amp; security by{" "}
