@@ -12,6 +12,7 @@ import { resolvePublicBaseUrl } from "@/lib/publicUrl";
 import { RouteLoader } from "@/components/RouteLoader";
 import { FullScreenLoader } from "@/components/ui/FullScreenLoader";
 import { TurnstileVerificationProvider } from "@/components/turnstile/TurnstileProvider";
+import { ChromeVisibilityProvider } from "@/components/ChromeVisibilityProvider";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -128,22 +129,24 @@ export default function RootLayout({
             })();
           `}
         </Script>
-        <TurnstileVerificationProvider>
-          <Providers>
-            <RouteLoader />
-            <div className="flex min-h-screen flex-col">
-              {shouldHideChrome ? null : <Navbar />}
-              <Suspense
-                fallback={
-                  <FullScreenLoader label="Preparing your experience..." />
-                }
-              >
-                <main className="flex-1">{children}</main>
-              </Suspense>
-              {shouldHideChrome ? null : <Footer />}
-            </div>
-          </Providers>
-        </TurnstileVerificationProvider>
+        <ChromeVisibilityProvider>
+          <TurnstileVerificationProvider>
+            <Providers>
+              <RouteLoader />
+              <div className="flex min-h-screen flex-col">
+                <Navbar />
+                <Suspense
+                  fallback={
+                    <FullScreenLoader label="Preparing your experience..." />
+                  }
+                >
+                  <main className="flex-1">{children}</main>
+                </Suspense>
+                <Footer />
+              </div>
+            </Providers>
+          </TurnstileVerificationProvider>
+        </ChromeVisibilityProvider>
       </body>
     </html>
   );

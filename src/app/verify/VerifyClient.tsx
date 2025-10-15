@@ -4,6 +4,7 @@ import dynamic from "next/dynamic";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { BoundTurnstileObject, TurnstileProps } from "react-turnstile";
+import { useChromeVisibility } from "@/components/ChromeVisibilityProvider";
 
 const Turnstile = dynamic<TurnstileProps>(
   () =>
@@ -67,17 +68,14 @@ export function VerifyClient() {
     }
   }, []);
 
+  const { setChromeHidden } = useChromeVisibility();
+
   useEffect(() => {
-    document.body.classList.add("chrome-hidden");
-    const cleanup = () => {
-      document.body.classList.remove("chrome-hidden");
-    };
-    window.addEventListener("beforeunload", cleanup);
+    setChromeHidden(true);
     return () => {
-      cleanup();
-      window.removeEventListener("beforeunload", cleanup);
+      setChromeHidden(false);
     };
-  }, []);
+  }, [setChromeHidden]);
 
   useEffect(() => {
     if (!rayId) {
@@ -151,15 +149,18 @@ export function VerifyClient() {
 
   useEffect(() => {
     if (status !== "success") return;
+    
+    // Ensure chrome is visible before navigation
+    setChromeHidden(false);
+    
     const timeout = window.setTimeout(() => {
-      document.body.classList.remove("chrome-hidden");
       router.replace(redirectTarget);
     }, 600);
 
     return () => {
       window.clearTimeout(timeout);
     };
-  }, [status, router, redirectTarget]);
+  }, [status, router, redirectTarget, setChromeHidden]);
 
   const handleVerify = useCallback(
     async (token: string) => {
